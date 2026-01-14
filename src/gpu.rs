@@ -19,9 +19,11 @@ pub async fn gpu_init() -> (wgpu::Device, wgpu::Adapter, wgpu::Queue) {
     }
     limits.max_storage_buffers_per_shader_stage = 8;
 
+    let required_features = wgpu::Features::empty();
+
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
         label: None,
-        required_features: wgpu::Features::empty(),
+        required_features,
         required_limits: limits,
         memory_hints: wgpu::MemoryHints::MemoryUsage,
         trace: wgpu::Trace::Off,

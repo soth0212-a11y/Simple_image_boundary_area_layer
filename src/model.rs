@@ -6,7 +6,7 @@ use wgpu::util::DeviceExt;
 use crate::config;
 use crate::preprocessing;
 use crate::visualization; // 시각화 모듈 사용
-use crate::l3_gpu;
+use crate::l3_edge_gpu;
 
 // ---- 상수 및 구조체 정의 ----
 #[repr(C)]
@@ -74,6 +74,7 @@ fn readback_u32_buffer(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::B
     drop(data); staging.unmap();
     result
 }
+
 
 // ---- 파이프라인 초기화 (모든 레이어) ----
 
@@ -385,12 +386,12 @@ pub fn model(
     img_info: preprocessing::Imginfo,
     static_vals: [&layer_static_values; 2], // [l0..l1]
     l2_static: &layer2_static_values,
-    l3_pipelines: &l3_gpu::L3GpuPipelines,
-    l3_buffers: &mut Option<l3_gpu::L3GpuBuffers>,
+    l3_edge_pipelines: &l3_edge_gpu::L3EdgeGpuPipelines,
+    l3_edge_buffers: &mut Option<l3_edge_gpu::L3EdgeGpuBuffers>,
     src_path: &Path,
 ) {
     let total_start = Instant::now();
-    let mut l3_e = std::time::Duration::from_secs(0);
+    let mut l3_edge_e = std::time::Duration::from_secs(0);
 
     // ---- Layer0 ----
     let l0_s = Instant::now();
@@ -409,7 +410,7 @@ pub fn model(
     let height = info[0];
     let width = info[1];
     let mut pooled_cpu: Option<Vec<u32>> = None;
-    if (config::get().save_layer2 || config::get().save_layer3) && l2_out.out_w > 0 && l2_out.out_h > 0 {
+    if (config::get().save_layer2 || config::get().save_layer3_edge) && l2_out.out_w > 0 && l2_out.out_h > 0 {
         let out_size = (l2_out.out_w * l2_out.out_h) as u64 * 4;
         let pooled = readback_u32_buffer(device, queue, &l2_out.mask, out_size);
         if config::get().save_layer2 {
@@ -434,9 +435,9 @@ pub fn model(
         pooled_cpu = Some(pooled);
     }
 
-    let need_l3 = config::get().save_layer3 || config::get().log_timing;
-    if need_l3 && l2_out.out_w >= 16 && l2_out.out_h >= 16 {
-        let l3_s = Instant::now();
+    let need_l3_edge = config::get().save_layer3_edge || config::get().log_timing;
+    if need_l3_edge && l2_out.out_w >= 16 && l2_out.out_h >= 16 {
+        let l3_edge_s = Instant::now();
         let aw = ((l2_out.out_w - 16) / 4) + 1;
         let ah = ((l2_out.out_h - 16) / 4) + 1;
         let bw = (aw + 3) / 4;
@@ -444,28 +445,28 @@ pub fn model(
         let bw2 = (bw + 1) / 2;
         let bh2 = (bh + 1) / 2;
         if aw > 0 && ah > 0 && bw > 0 && bh > 0 && bw2 > 0 && bh2 > 0 {
-            let rebuild = l3_buffers
+            let rebuild = l3_edge_buffers
                 .as_ref()
                 .map(|b| b.aw != aw || b.ah != ah || b.bw != bw || b.bh != bh || b.bw2 != bw2 || b.bh2 != bh2)
                 .unwrap_or(true);
             if rebuild {
-                *l3_buffers = Some(l3_gpu::ensure_l3_buffers(device, aw, ah, bw, bh, bw2, bh2));
+                *l3_edge_buffers = Some(l3_edge_gpu::ensure_l3_edge_buffers(device, aw, ah, bw, bh, bw2, bh2));
             }
-            let l3_bufs = l3_buffers.as_ref().unwrap();
+            let l3_edge_bufs = l3_edge_buffers.as_ref().unwrap();
 
             let info_buf_data = [height, width];
             let info_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-                label: Some("l3_info"),
+                label: Some("l3_edge_info"),
                 contents: bytemuck::cast_slice(&info_buf_data),
                 usage: wgpu::BufferUsages::STORAGE,
             });
 
-            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l3_enc") });
-            l3_gpu::dispatch_l3(
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l3_edge_enc") });
+            l3_edge_gpu::dispatch_l3_edge(
                 device,
                 &mut enc,
-                l3_pipelines,
-                l3_bufs,
+                l3_edge_pipelines,
+                l3_edge_bufs,
                 &info_buf,
                 &l2_out.mask,
                 aw,
@@ -478,27 +479,27 @@ pub fn model(
             queue.submit([enc.finish()]);
 
             let block_count = (bw2 * bh2) as usize;
-            let block_slots = block_count * 16;
+            let block_slots = block_count * 40;
             let mut block_boxes: Vec<u32> = Vec::new();
             let mut block_valid: Vec<u32> = Vec::new();
 
-            if config::get().save_layer3 && block_slots > 0 {
+            if config::get().save_layer3_edge && block_slots > 0 {
                 let boxes_bytes = (block_slots * 2 * 4) as u64;
-                block_boxes = readback_u32_buffer(device, queue, &l3_bufs.block_boxes, boxes_bytes);
+                block_boxes = readback_u32_buffer(device, queue, &l3_edge_bufs.block_boxes, boxes_bytes);
                 let valid_bytes = (block_slots * 4) as u64;
-                block_valid = readback_u32_buffer(device, queue, &l3_bufs.block_valid, valid_bytes);
+                block_valid = readback_u32_buffer(device, queue, &l3_edge_bufs.block_valid, valid_bytes);
             }
 
-            if config::get().save_layer3 {
+            if config::get().save_layer3_edge {
                 let anchor_count = (aw * ah) as usize;
                 if anchor_count > 0 {
                     let anchor_bbox_bytes = (anchor_count * 2 * 4) as u64;
                     let anchor_score_bytes = (anchor_count * 4) as u64;
-                    let anchor_bbox = readback_u32_buffer(device, queue, &l3_bufs.anchor_bbox, anchor_bbox_bytes);
-                    let anchor_score = readback_u32_buffer(device, queue, &l3_bufs.anchor_score, anchor_score_bytes);
-                    let anchor_meta = readback_u32_buffer(device, queue, &l3_bufs.anchor_meta, anchor_score_bytes);
+                    let anchor_bbox = readback_u32_buffer(device, queue, &l3_edge_bufs.anchor_bbox, anchor_bbox_bytes);
+                    let anchor_score = readback_u32_buffer(device, queue, &l3_edge_bufs.anchor_score, anchor_score_bytes);
+                    let anchor_meta = readback_u32_buffer(device, queue, &l3_edge_bufs.anchor_meta, anchor_score_bytes);
 
-                    let _ = visualization::save_layer3_pass1_anchor_overlay(
+                    let _ = visualization::save_layer3_edge_pass1_anchor_overlay(
                         src_path,
                         l2_out.out_w as usize,
                         l2_out.out_h as usize,
@@ -512,20 +513,20 @@ pub fn model(
 
                 if block_slots > 0 {
                     if let Some(ref pooled) = pooled_cpu {
-                        let _ = visualization::save_layer3_block_overlay(
+                        let _ = visualization::save_layer3_edge_block_overlay(
                             src_path,
                             pooled,
                             l2_out.out_w as usize,
                             l2_out.out_h as usize,
                             &block_boxes,
                             &block_valid,
-                            "l3",
+                            "l3_edge",
                         );
                     }
                 }
             }
 
-            l3_e = l3_s.elapsed();
+            l3_edge_e = l3_edge_s.elapsed();
         }
     }
     let grid3_w = width;
@@ -551,7 +552,7 @@ pub fn model(
             l0_e,
             l1_e,
             l2_e,
-            l3_e,
+            l3_edge_e,
             total_start.elapsed(),
         );
     }

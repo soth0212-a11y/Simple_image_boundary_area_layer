@@ -1,12 +1,12 @@
-// L3 Pass2b: merge 2x2 blocks (8x8 anchors) output 16 slots
+// L3Edge Pass2b: merge 2x2 blocks (8x8 anchors) output 40 slots
 
 @group(0) @binding(0) var<storage, read> input_img_info: array<u32>; // [height, width]
-@group(0) @binding(1) var<storage, read> stage1_boxes: array<u32>;  // 4 slots * 2
-@group(0) @binding(2) var<storage, read> stage1_scores: array<u32>; // 4 slots
-@group(0) @binding(3) var<storage, read> stage1_valid: array<u32>;  // 4 slots (flags|1)
-@group(0) @binding(4) var<storage, read_write> block_boxes: array<u32>;  // 16 slots * 2
-@group(0) @binding(5) var<storage, read_write> block_scores: array<u32>; // 16 slots
-@group(0) @binding(6) var<storage, read_write> block_valid: array<u32>;  // 16 slots
+@group(0) @binding(1) var<storage, read> stage1_boxes: array<u32>;  // 10 slots * 2
+@group(0) @binding(2) var<storage, read> stage1_scores: array<u32>; // 10 slots
+@group(0) @binding(3) var<storage, read> stage1_valid: array<u32>;  // 10 slots (flags|1)
+@group(0) @binding(4) var<storage, read_write> block_boxes: array<u32>;  // 40 slots * 2
+@group(0) @binding(5) var<storage, read_write> block_scores: array<u32>; // 40 slots
+@group(0) @binding(6) var<storage, read_write> block_valid: array<u32>;  // 40 slots
 
 struct Cand {
     valid: bool,
@@ -96,7 +96,7 @@ fn allow_merge(a: Cand, b: Cand) -> bool {
     return a_s && a_w && b_n && b_e;
 }
 
-fn find_root(parent: ptr<function, array<u32, 16>>, idx: u32) -> u32 {
+fn find_root(parent: ptr<function, array<u32, 40>>, idx: u32) -> u32 {
     var x: u32 = idx;
     loop {
         let p: u32 = (*parent)[x];
@@ -106,7 +106,7 @@ fn find_root(parent: ptr<function, array<u32, 16>>, idx: u32) -> u32 {
     return x;
 }
 
-fn union_root(parent: ptr<function, array<u32, 16>>, a: u32, b: u32) {
+fn union_root(parent: ptr<function, array<u32, 40>>, a: u32, b: u32) {
     let ra: u32 = find_root(parent, a);
     let rb: u32 = find_root(parent, b);
     if (ra != rb) {
@@ -142,8 +142,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let base_bx: u32 = gid.x * 2u;
     let base_by: u32 = gid.y * 2u;
 
-    var cands: array<Cand, 16>;
-    for (var i: u32 = 0u; i < 16u; i = i + 1u) {
+    var cands: array<Cand, 40>;
+    for (var i: u32 = 0u; i < 40u; i = i + 1u) {
         cands[i] = Cand(false, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u);
     }
     var count: u32 = 0u;
@@ -155,13 +155,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let gx: u32 = base_bx + bx;
             if (gx >= bw) { continue; }
             let block_idx: u32 = gy * bw + gx;
-            let base_slot: u32 = block_idx * 4u;
-            for (var s: u32 = 0u; s < 4u; s = s + 1u) {
+            let base_slot: u32 = block_idx * 10u;
+            for (var s: u32 = 0u; s < 10u; s = s + 1u) {
                 let slot_idx: u32 = base_slot + s;
                 if (slot_idx >= arrayLength(&stage1_valid)) { continue; }
                 let flags: u32 = stage1_valid[slot_idx];
                 if ((flags & 1u) == 0u) { continue; }
-                if (count >= 16u) { continue; }
+                if (count >= 40u) { continue; }
                 let bbox_idx: u32 = slot_idx * 2u;
                 if (bbox_idx + 1u >= arrayLength(&stage1_boxes)) { continue; }
                 let b0: u32 = stage1_boxes[bbox_idx];
@@ -181,14 +181,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
 
-    var parent: array<u32, 16>;
-    for (var i: u32 = 0u; i < 16u; i = i + 1u) {
+    var parent: array<u32, 40>;
+    for (var i: u32 = 0u; i < 40u; i = i + 1u) {
         parent[i] = i;
     }
 
-    for (var i: u32 = 0u; i < 16u; i = i + 1u) {
+    for (var i: u32 = 0u; i < 40u; i = i + 1u) {
         if (!cands[i].valid) { continue; }
-        for (var j: u32 = i + 1u; j < 16u; j = j + 1u) {
+        for (var j: u32 = i + 1u; j < 40u; j = j + 1u) {
             if (!cands[j].valid) { continue; }
             if (iou_ge_t2(cands[i], cands[j]) && allow_merge(cands[i], cands[j])) {
                 union_root(&parent, i, j);
@@ -196,11 +196,11 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         }
     }
 
-    var merged: array<Cand, 16>;
-    for (var i: u32 = 0u; i < 16u; i = i + 1u) {
+    var merged: array<Cand, 40>;
+    for (var i: u32 = 0u; i < 40u; i = i + 1u) {
         merged[i] = Cand(false, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u);
     }
-    for (var i: u32 = 0u; i < 16u; i = i + 1u) {
+    for (var i: u32 = 0u; i < 40u; i = i + 1u) {
         if (!cands[i].valid) { continue; }
         let root: u32 = find_root(&parent, i);
         if (!merged[root].valid) {
@@ -211,8 +211,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     let block_idx: u32 = gid.y * bw2 + gid.x;
-    let base_out: u32 = block_idx * 16u;
-    for (var i: u32 = 0u; i < 16u; i = i + 1u) {
+    let base_out: u32 = block_idx * 40u;
+    for (var i: u32 = 0u; i < 40u; i = i + 1u) {
         let out_idx: u32 = base_out + i;
         let bbox_idx: u32 = out_idx * 2u;
         let c: Cand = merged[i];

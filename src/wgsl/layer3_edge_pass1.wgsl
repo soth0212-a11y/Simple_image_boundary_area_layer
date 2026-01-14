@@ -1,4 +1,4 @@
-// L3 Pass1: continuity-based anchor bbox/score/flags (window=16, stride=4)
+// L3Edge Pass1: continuity-based anchor bbox/score/flags (window=16, stride=4)
 
 @group(0) @binding(0) var<storage, read> input_img_info: array<u32>; // [height, width]
 @group(0) @binding(1) var<storage, read> pooled_mask: array<u32>; // L2 output (bit0/bit1)

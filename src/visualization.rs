@@ -335,7 +335,7 @@ pub fn save_layer2_inactive_avg_overlay(
     Ok(())
 }
 
-pub fn save_layer3_pass1_anchor_overlay(
+pub fn save_layer3_edge_pass1_anchor_overlay(
     src_path: &Path,
     out_w: usize,
     out_h: usize,
@@ -388,11 +388,11 @@ pub fn save_layer3_pass1_anchor_overlay(
     fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_pass1_anchors_{}.png", stem, time)))?;
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_edge_pass1_anchors_{}.png", stem, time)))?;
     Ok(())
 }
 
-pub fn save_layer3_pass2_block_topk_overlay(
+pub fn save_layer3_edge_pass2_block_topk_overlay(
     src_path: &Path,
     out_w: usize,
     out_h: usize,
@@ -450,11 +450,11 @@ pub fn save_layer3_pass2_block_topk_overlay(
     fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_pass2_top5_{}.png", stem, time)))?;
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_edge_pass2_top5_{}.png", stem, time)))?;
     Ok(())
 }
 
-pub fn save_layer3_block_overlay(
+pub fn save_layer3_edge_block_overlay(
     src_path: &Path,
     pooled_mask: &[u32],
     out_w: usize,
@@ -518,7 +518,7 @@ pub fn save_layer3_block_overlay(
     fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_block_{}_{}.png", stem, tag, time)))?;
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_edge_block_{}_{}.png", stem, tag, time)))?;
     Ok(())
 }
 
@@ -545,7 +545,7 @@ pub fn log_timing_block(
         writeln!(w, "layer0: {:?}", l0).ok();
         writeln!(w, "layer1: {:?}", l1).ok();
         writeln!(w, "layer2: {:?}", l2).ok();
-        writeln!(w, "layer3: {:?}", l3).ok();
+        writeln!(w, "layer3_edge: {:?}", l3).ok();
         writeln!(w, "total: {:?}", total).ok();
         w.flush().ok();
     }
