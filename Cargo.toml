@@ -1,5 +1,5 @@
 [package]
-name = "Image_processing"
+name = "Simple_image_boundary_area_layer"
 version = "0.1.0"
 edition = "2024"
 
