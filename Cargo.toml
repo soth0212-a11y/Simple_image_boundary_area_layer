@@ -1,0 +1,16 @@
+[package]
+name = "Image_processing"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+image = "0.25.0"
+libc = "0.2.172"
+ndarray = "0.16.1"
+log = "0.4"
+env_logger = "0.10"
+wgpu = "25.0.2"
+pollster = "0.4.0"
+bytemuck = "1.23.1"
+tokio = "1.47.1"
+chrono = "0.4"
