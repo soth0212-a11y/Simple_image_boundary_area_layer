@@ -6,6 +6,7 @@ use wgpu::util::DeviceExt;
 use crate::config;
 use crate::preprocessing;
 use crate::visualization; // 시각화 모듈 사용
+use crate::l3_gpu;
 
 // ---- 상수 및 구조체 정의 ----
 #[repr(C)]
@@ -28,6 +29,12 @@ pub struct Layer1Outputs {
     pub mask: wgpu::Buffer,
 }
 
+pub struct Layer2Outputs {
+    pub mask: wgpu::Buffer,
+    pub out_w: u32,
+    pub out_h: u32,
+}
+
 #[derive(Clone, Copy, Default)]
 pub struct BBox {
     pub x0: u32,
@@ -41,6 +48,7 @@ pub struct BBoxScore {
     pub bbox: BBox,
     pub score: u64,
     pub area: u64,
+    pub flags: u32,
 }
 
 #[repr(C)]
@@ -239,17 +247,23 @@ pub fn layer2(
     l1: &Layer1Outputs,
     img_info: [u32; 4],
     static_vals: &layer2_static_values,
-    src_path: &Path,
-    l3_e: &mut std::time::Duration,
-    l4_e: &mut std::time::Duration,
-) {
+) -> Layer2Outputs {
     const KERNEL: u32 = 2;
     const STRIDE: u32 = 1;
 
     let height = img_info[0];
     let width = img_info[1];
     if width == 0 || height == 0 {
-        return;
+        return Layer2Outputs {
+            mask: device.create_buffer(&wgpu::BufferDescriptor {
+                label: Some("l2_pool_mask_empty"),
+                size: 4,
+                usage: wgpu::BufferUsages::STORAGE,
+                mapped_at_creation: false,
+            }),
+            out_w: 0,
+            out_h: 0,
+        };
     }
 
     let l1_w = (width + 1) / 2;
@@ -299,173 +313,11 @@ pub fn layer2(
     }
     queue.submit([enc.finish()]);
 
-    let pooled = readback_u32_buffer(device, queue, &pooled_mask, out_size);
-    if config::get().save_layer2 {
-        let _ = visualization::save_layer2_overlay(
-            src_path,
-            &pooled,
-            out_w as usize,
-            out_h as usize,
-            width as usize,
-            height as usize,
-            "layer2",
-        );
+    Layer2Outputs {
+        mask: pooled_mask,
+        out_w,
+        out_h,
     }
-
-    if config::get().save_layer3 || config::get().save_layer4 || config::get().log_timing {
-        let l3_s = Instant::now();
-        let prefix = build_prefix_sum(&pooled, out_w, out_h);
-        let candidates = generate_candidates(&prefix, out_w, out_h, 16, 4, 10);
-        let kept = nms(candidates.clone());
-        *l3_e = l3_s.elapsed();
-        let l4_s = Instant::now();
-        let l4 = l4_union_merge(&kept);
-        *l4_e = l4_s.elapsed();
-
-        if config::get().save_layer3 {
-            let pre_boxes: Vec<(u32, u32, u32, u32)> = candidates
-                .iter()
-                .map(|b| (b.bbox.x0, b.bbox.y0, b.bbox.x1, b.bbox.y1))
-                .collect();
-            let kept_boxes: Vec<(u32, u32, u32, u32)> = kept
-                .iter()
-                .map(|b| (b.bbox.x0, b.bbox.y0, b.bbox.x1, b.bbox.y1))
-                .collect();
-            let _ = visualization::save_layer3_boxes_overlay(
-                src_path,
-                &pooled,
-                out_w as usize,
-                out_h as usize,
-                &pre_boxes,
-                &kept_boxes,
-                "l3",
-            );
-        }
-        if config::get().save_layer4 {
-            let l4_boxes: Vec<(u32, u32, u32, u32)> = l4
-                .iter()
-                .map(|b| (b.bbox.x0, b.bbox.y0, b.bbox.x1, b.bbox.y1))
-                .collect();
-            let _ = visualization::save_layer4_boxes_overlay(
-                src_path,
-                &pooled,
-                out_w as usize,
-                out_h as usize,
-                &l4_boxes,
-                "l4",
-            );
-        }
-    }
-
-}
-
-fn build_prefix_sum(active_mask: &[u32], w: u32, h: u32) -> Vec<u64> {
-    let pw = w as usize + 1;
-    let ph = h as usize + 1;
-    let mut prefix = vec![0u64; pw * ph];
-    for y in 0..h as usize {
-        let row_base = (y + 1) * pw;
-        let prev_base = y * pw;
-        let mut row_sum: u64 = 0;
-        for x in 0..w as usize {
-            let idx = y * w as usize + x;
-            let active = ((active_mask[idx] >> 1) & 1) as u64;
-            row_sum += active;
-            prefix[row_base + x + 1] = prefix[prev_base + x + 1] + row_sum;
-        }
-    }
-    prefix
-}
-
-fn score_box(prefix: &[u64], w: u32, b: BBox) -> u64 {
-    let x0 = b.x0 as usize;
-    let y0 = b.y0 as usize;
-    let x1 = b.x1 as usize;
-    let y1 = b.y1 as usize;
-    let pw = w as usize + 1;
-    let a = prefix[y1 * pw + x1];
-    let b0 = prefix[y0 * pw + x1];
-    let c = prefix[y1 * pw + x0];
-    let d = prefix[y0 * pw + x0];
-    a - b0 - c + d
-}
-
-fn generate_candidates(
-    prefix: &[u64],
-    w: u32,
-    h: u32,
-    window: u32,
-    stride: u32,
-    threshold_pct: u32,
-) -> Vec<BBoxScore> {
-    let mut out = Vec::new();
-    if w == 0 || h == 0 || window == 0 {
-        return out;
-    }
-    let area = (window as u64) * (window as u64);
-    let thresh = (threshold_pct as u64) * area;
-    let mut y: u32 = 0;
-    while y + window <= h {
-        let mut x: u32 = 0;
-        while x + window <= w {
-            let b = BBox { x0: x, y0: y, x1: x + window, y1: y + window };
-            let score = score_box(prefix, w, b);
-            if score * 100 >= thresh {
-                out.push(BBoxScore { bbox: b, score, area });
-            }
-            x += stride;
-        }
-        y += stride;
-    }
-    out
-}
-
-fn iou_ge_10(a: BBox, b: BBox) -> bool {
-    let ax0 = a.x0;
-    let ay0 = a.y0;
-    let ax1 = a.x1;
-    let ay1 = a.y1;
-    let bx0 = b.x0;
-    let by0 = b.y0;
-    let bx1 = b.x1;
-    let by1 = b.y1;
-    let inter_x0 = ax0.max(bx0);
-    let inter_y0 = ay0.max(by0);
-    let inter_x1 = ax1.min(bx1);
-    let inter_y1 = ay1.min(by1);
-    if inter_x1 <= inter_x0 || inter_y1 <= inter_y0 {
-        return false;
-    }
-    let inter_w = (inter_x1 - inter_x0) as u64;
-    let inter_h = (inter_y1 - inter_y0) as u64;
-    let inter_area = inter_w * inter_h;
-    let area_a = ((ax1 - ax0) as u64) * ((ay1 - ay0) as u64);
-    let area_b = ((bx1 - bx0) as u64) * ((by1 - by0) as u64);
-    let union_area = area_a + area_b - inter_area;
-    inter_area * 10 >= union_area
-}
-
-fn nms(mut boxes: Vec<BBoxScore>) -> Vec<BBoxScore> {
-    boxes.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| b.area.cmp(&a.area)));
-    let mut kept: Vec<BBoxScore> = Vec::new();
-    let mut suppressed = vec![false; boxes.len()];
-    for i in 0..boxes.len() {
-        if suppressed[i] {
-            continue;
-        }
-        let bi = boxes[i];
-        kept.push(bi);
-        for j in (i + 1)..boxes.len() {
-            if suppressed[j] {
-                continue;
-            }
-            let bj = boxes[j];
-            if iou_ge_10(bi.bbox, bj.bbox) {
-                suppressed[j] = true;
-            }
-        }
-    }
-    kept
 }
 
 struct DSU {
@@ -510,17 +362,89 @@ impl DSU {
     }
 }
 
-fn l4_union_merge(boxes: &[BBoxScore]) -> Vec<BBoxScore> {
+const FLAG_TOUCH_N: u32 = 16u32;
+const FLAG_TOUCH_E: u32 = 32u32;
+const FLAG_TOUCH_S: u32 = 64u32;
+const FLAG_TOUCH_W: u32 = 128u32;
+
+fn iou_ge_10(a: BBox, b: BBox) -> bool {
+    if a.x1 <= a.x0 || a.y1 <= a.y0 || b.x1 <= b.x0 || b.y1 <= b.y0 {
+        return false;
+    }
+    let inter_x0 = a.x0.max(b.x0);
+    let inter_y0 = a.y0.max(b.y0);
+    let inter_x1 = a.x1.min(b.x1);
+    let inter_y1 = a.y1.min(b.y1);
+    if inter_x1 <= inter_x0 || inter_y1 <= inter_y0 {
+        return false;
+    }
+    let inter_w = (inter_x1 - inter_x0) as u64;
+    let inter_h = (inter_y1 - inter_y0) as u64;
+    let inter_area = inter_w * inter_h;
+    let area_a = ((a.x1 - a.x0) as u64) * ((a.y1 - a.y0) as u64);
+    let area_b = ((b.x1 - b.x0) as u64) * ((b.y1 - b.y0) as u64);
+    let union_area = area_a + area_b - inter_area;
+    if union_area == 0 {
+        return false;
+    }
+    inter_area * 10 >= union_area
+}
+
+fn l4_allow_merge(a: &BBoxScore, b: &BBoxScore) -> bool {
+    let ax = (a.bbox.x0 + a.bbox.x1) / 2;
+    let ay = (a.bbox.y0 + a.bbox.y1) / 2;
+    let bx = (b.bbox.x0 + b.bbox.x1) / 2;
+    let by = (b.bbox.y0 + b.bbox.y1) / 2;
+    let dx = bx as i64 - ax as i64;
+    let dy = by as i64 - ay as i64;
+    if dx == 0 && dy == 0 {
+        return true;
+    }
+
+    let a_n = (a.flags & FLAG_TOUCH_N) != 0u32;
+    let a_e = (a.flags & FLAG_TOUCH_E) != 0u32;
+    let a_s = (a.flags & FLAG_TOUCH_S) != 0u32;
+    let a_w = (a.flags & FLAG_TOUCH_W) != 0u32;
+    let b_n = (b.flags & FLAG_TOUCH_N) != 0u32;
+    let b_e = (b.flags & FLAG_TOUCH_E) != 0u32;
+    let b_s = (b.flags & FLAG_TOUCH_S) != 0u32;
+    let b_w = (b.flags & FLAG_TOUCH_W) != 0u32;
+
+    if dx == 0 {
+        if dy > 0 { return a_s && b_n; }
+        return a_n && b_s;
+    }
+    if dy == 0 {
+        if dx > 0 { return a_e && b_w; }
+        return a_w && b_e;
+    }
+
+    if dx > 0 && dy < 0 { return a_n && a_e && b_s && b_w; }
+    if dx > 0 && dy > 0 { return a_s && a_e && b_n && b_w; }
+    if dx < 0 && dy < 0 { return a_n && a_w && b_s && b_e; }
+    a_s && a_w && b_n && b_e
+}
+
+fn l4_union_merge_once(boxes: &[BBoxScore]) -> (Vec<BBoxScore>, bool) {
     let n = boxes.len();
     if n == 0 {
-        return Vec::new();
+        return (Vec::new(), false);
     }
     let mut dsu = DSU::new(n);
-    let radius_sq: u64 = 16u64 * 16u64;
+    let radius_sq: u64 = 8u64 * 8u64;
+    let mut changed = false;
     for i in 0..n {
         for j in (i + 1)..n {
-            if center_distance_sq(boxes[i].bbox, boxes[j].bbox) <= radius_sq {
-                dsu.union(i, j);
+            if center_distance_sq(boxes[i].bbox, boxes[j].bbox) <= radius_sq
+                && iou_ge_10(boxes[i].bbox, boxes[j].bbox)
+                && l4_allow_merge(&boxes[i], &boxes[j])
+            {
+                let ra = dsu.find(i);
+                let rb = dsu.find(j);
+                if ra != rb {
+                    dsu.union(ra, rb);
+                    changed = true;
+                }
             }
         }
     }
@@ -532,12 +456,14 @@ fn l4_union_merge(boxes: &[BBoxScore]) -> Vec<BBoxScore> {
             bbox: b.bbox,
             score: 0,
             area: 0,
+            flags: 0,
         });
         entry.bbox.x0 = entry.bbox.x0.min(b.bbox.x0);
         entry.bbox.y0 = entry.bbox.y0.min(b.bbox.y0);
         entry.bbox.x1 = entry.bbox.x1.max(b.bbox.x1);
         entry.bbox.y1 = entry.bbox.y1.max(b.bbox.y1);
         entry.score = entry.score.saturating_add(b.score);
+        entry.flags |= b.flags;
     }
     let mut out: Vec<BBoxScore> = Vec::new();
     for (_root, mut v) in agg {
@@ -546,7 +472,18 @@ fn l4_union_merge(boxes: &[BBoxScore]) -> Vec<BBoxScore> {
         v.area = w * h;
         out.push(v);
     }
-    out
+    (out, changed)
+}
+
+fn l4_union_merge(boxes: &[BBoxScore]) -> Vec<BBoxScore> {
+    let mut current: Vec<BBoxScore> = boxes.to_vec();
+    loop {
+        let (next, changed) = l4_union_merge_once(&current);
+        if !changed || next.len() == current.len() {
+            return next;
+        }
+        current = next;
+    }
 }
 
 fn center_distance_sq(a: BBox, b: BBox) -> u64 {
@@ -568,6 +505,8 @@ pub fn model(
     img_info: preprocessing::Imginfo,
     static_vals: [&layer_static_values; 2], // [l0..l1]
     l2_static: &layer2_static_values,
+    l3_pipelines: &l3_gpu::L3GpuPipelines,
+    l3_buffers: &mut Option<l3_gpu::L3GpuBuffers>,
     src_path: &Path,
 ) {
     let total_start = Instant::now();
@@ -585,11 +524,180 @@ pub fn model(
     let l1_e = l1_s.elapsed();
 
     let l2_s = Instant::now();
-    layer2(device, queue, &l1_out, info, l2_static, src_path, &mut l3_e, &mut l4_e);
+    let l2_out = layer2(device, queue, &l1_out, info, l2_static);
     let l2_e = l2_s.elapsed();
 
     let height = info[0];
     let width = info[1];
+    let mut pooled_cpu: Option<Vec<u32>> = None;
+    if (config::get().save_layer2 || config::get().save_layer4) && l2_out.out_w > 0 && l2_out.out_h > 0 {
+        let out_size = (l2_out.out_w * l2_out.out_h) as u64 * 4;
+        let pooled = readback_u32_buffer(device, queue, &l2_out.mask, out_size);
+        if config::get().save_layer2 {
+            let _ = visualization::save_layer2_overlay(
+                src_path,
+                &pooled,
+                l2_out.out_w as usize,
+                l2_out.out_h as usize,
+                width as usize,
+                height as usize,
+                "layer2",
+            );
+        }
+        pooled_cpu = Some(pooled);
+    }
+
+    let need_l3 = config::get().save_layer3 || config::get().save_layer4 || config::get().log_timing;
+    if need_l3 && l2_out.out_w >= 16 && l2_out.out_h >= 16 {
+        let l3_s = Instant::now();
+        let aw = ((l2_out.out_w - 16) / 4) + 1;
+        let ah = ((l2_out.out_h - 16) / 4) + 1;
+        let bw = (aw + 3) / 4;
+        let bh = (ah + 3) / 4;
+        let bw2 = (bw + 1) / 2;
+        let bh2 = (bh + 1) / 2;
+        if aw > 0 && ah > 0 && bw > 0 && bh > 0 && bw2 > 0 && bh2 > 0 {
+            let rebuild = l3_buffers
+                .as_ref()
+                .map(|b| b.aw != aw || b.ah != ah || b.bw != bw || b.bh != bh || b.bw2 != bw2 || b.bh2 != bh2)
+                .unwrap_or(true);
+            if rebuild {
+                *l3_buffers = Some(l3_gpu::ensure_l3_buffers(device, aw, ah, bw, bh, bw2, bh2));
+            }
+            let l3_bufs = l3_buffers.as_ref().unwrap();
+
+            let info_buf_data = [height, width];
+            let info_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("l3_info"),
+                contents: bytemuck::cast_slice(&info_buf_data),
+                usage: wgpu::BufferUsages::STORAGE,
+            });
+
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l3_enc") });
+            l3_gpu::dispatch_l3(
+                device,
+                &mut enc,
+                l3_pipelines,
+                l3_bufs,
+                &info_buf,
+                &l2_out.mask,
+                aw,
+                ah,
+                bw,
+                bh,
+                bw2,
+                bh2,
+            );
+            queue.submit([enc.finish()]);
+
+            let block_count = (bw2 * bh2) as usize;
+            let block_slots = block_count * 16;
+            let mut block_boxes: Vec<u32> = Vec::new();
+            let mut block_scores: Vec<u32> = Vec::new();
+            let mut block_valid: Vec<u32> = Vec::new();
+
+            if block_slots > 0 {
+                let boxes_bytes = (block_slots * 2 * 4) as u64;
+                let scores_bytes = (block_slots * 4) as u64;
+                block_boxes = readback_u32_buffer(device, queue, &l3_bufs.block_boxes, boxes_bytes);
+                block_scores = readback_u32_buffer(device, queue, &l3_bufs.block_scores, scores_bytes);
+                block_valid = readback_u32_buffer(device, queue, &l3_bufs.block_valid, scores_bytes);
+            }
+
+            if config::get().save_layer3 {
+                let anchor_count = (aw * ah) as usize;
+                if anchor_count > 0 {
+                    let anchor_bbox_bytes = (anchor_count * 2 * 4) as u64;
+                    let anchor_score_bytes = (anchor_count * 4) as u64;
+                    let anchor_bbox = readback_u32_buffer(device, queue, &l3_bufs.anchor_bbox, anchor_bbox_bytes);
+                    let anchor_score = readback_u32_buffer(device, queue, &l3_bufs.anchor_score, anchor_score_bytes);
+                    let anchor_meta = readback_u32_buffer(device, queue, &l3_bufs.anchor_meta, anchor_score_bytes);
+
+                    let _ = visualization::save_layer3_pass1_anchor_overlay(
+                        src_path,
+                        l2_out.out_w as usize,
+                        l2_out.out_h as usize,
+                        aw as usize,
+                        ah as usize,
+                        &anchor_bbox,
+                        &anchor_score,
+                        &anchor_meta,
+                    );
+                }
+
+                if block_slots > 0 {
+                    let _ = visualization::save_layer3_pass2_block_topk_overlay(
+                        src_path,
+                        l2_out.out_w as usize,
+                        l2_out.out_h as usize,
+                        bw2 as usize,
+                        bh2 as usize,
+                        &block_boxes,
+                        &block_scores,
+                        &block_valid,
+                    );
+                }
+            }
+
+            l3_e = l3_s.elapsed();
+
+            if block_slots > 0 {
+                let mut l3_boxes: Vec<BBoxScore> = Vec::new();
+                for idx in 0..block_slots {
+                    let flags = block_valid.get(idx).copied().unwrap_or(0);
+                    if (flags & 1) == 0 {
+                        continue;
+                    }
+                    let bidx = idx * 2;
+                    if bidx + 1 >= block_boxes.len() {
+                        continue;
+                    }
+                    let bbox0 = block_boxes[bidx];
+                    let bbox1 = block_boxes[bidx + 1];
+                    let x0 = (bbox0 & 0xFFFF) as u32;
+                    let y0 = (bbox0 >> 16) as u32;
+                    let x1 = (bbox1 & 0xFFFF) as u32;
+                    let y1 = (bbox1 >> 16) as u32;
+                    if x1 <= x0 || y1 <= y0 {
+                        continue;
+                    }
+                    let score = block_scores.get(idx).copied().unwrap_or(0) as u64;
+                    let area = ((x1 - x0) as u64) * ((y1 - y0) as u64);
+                    l3_boxes.push(BBoxScore {
+                        bbox: BBox { x0, y0, x1, y1 },
+                        score,
+                        area,
+                        flags,
+                    });
+                }
+
+                let l4_s = Instant::now();
+                let l4 = l4_union_merge(&l3_boxes);
+                l4_e = l4_s.elapsed();
+
+                if config::get().save_layer4 && l2_out.out_w > 0 && l2_out.out_h > 0 {
+                    if pooled_cpu.is_none() {
+                        let out_size = (l2_out.out_w * l2_out.out_h) as u64 * 4;
+                        pooled_cpu = Some(readback_u32_buffer(device, queue, &l2_out.mask, out_size));
+                    }
+                    if let Some(ref pooled) = pooled_cpu {
+                        let l4_boxes: Vec<(u32, u32, u32, u32)> = l4
+                            .iter()
+                            .map(|b| (b.bbox.x0, b.bbox.y0, b.bbox.x1, b.bbox.y1))
+                            .collect();
+                        let _ = visualization::save_layer4_boxes_overlay(
+                            src_path,
+                            pooled,
+                            l2_out.out_w as usize,
+                            l2_out.out_h as usize,
+                            &l4_boxes,
+                            "l4",
+                        );
+                    }
+                }
+            }
+        }
+    }
     let grid3_w = width;
     let grid3_h = height;
     if config::get().save_layer0 {
