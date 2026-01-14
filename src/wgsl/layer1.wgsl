@@ -1,14 +1,11 @@
-// L1 compute shader (1:1 grid, stride=1)
-// - gid.xy -> origin_cell (x3,y3) = (sx, sy)
-// - idx = y3*grid3_w + x3
-// - out_mask 비트: bit0 INACTIVE, bit1 ACTIVE, bit3..6 LOCK
+// L1 compute shader (2x2 reduce)
+// - gid.xy -> output cell (ox, oy) in half-resolution grid
+// - out_mask: u32 packed as (active_count << 16) | total_count
 // - 모든 연산은 정수(u32/i32)만 사용
 
 @group(0) @binding(0) var<storage, read> input_img_info: array<u32>; // [height, width]
 @group(0) @binding(1) var<storage, read> layer0_masks: array<u32>;   // 1:1 u32 packed (R/G/B 8방향)
-@group(0) @binding(2) var<storage, read_write> out_mask: array<u32>; // packed mask
-
-const DIR_ACTIVE_TH: u32 = 2u;
+@group(0) @binding(2) var<storage, read_write> out_mask: array<u32>; // packed counts
 
 const BIT_N: u32 = 0u;
 const BIT_NE: u32 = 1u;
@@ -19,46 +16,7 @@ const BIT_SW: u32 = 5u;
 const BIT_W: u32 = 6u;
 const BIT_NW: u32 = 7u;
 
-const MASK_INACTIVE: u32 = 1u << 0u;
-const MASK_ACTIVE: u32 = 1u << 1u;
-const LOCK_N: u32 = 1u << 3u;
-const LOCK_E: u32 = 1u << 4u;
-const LOCK_S: u32 = 1u << 5u;
-const LOCK_W: u32 = 1u << 6u;
-
-@compute @workgroup_size(16, 16)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    if (arrayLength(&input_img_info) < 2u) {
-        return;
-    }
-    let height: u32 = input_img_info[0];
-    let width: u32 = input_img_info[1];
-    if (width == 0u || height == 0u) {
-        return;
-    }
-
-    let grid3_w: u32 = width;
-    let grid3_h: u32 = height;
-    if (grid3_w == 0u || grid3_h == 0u) {
-        return;
-    }
-
-    let dispatch_w: u32 = grid3_w;
-    let dispatch_h: u32 = grid3_h;
-    if (gid.x >= dispatch_w || gid.y >= dispatch_h) {
-        return;
-    }
-    // stride=1: origin_cell = (sx, sy)
-    let x3: u32 = gid.x;
-    let y3: u32 = gid.y;
-    if (x3 >= grid3_w || y3 >= grid3_h) {
-        return;
-    }
-
-    // thread 1:1 매핑
-    let idx: u32 = y3 * grid3_w + x3;
-    if (idx >= arrayLength(&out_mask)) { return; }
-
+fn compute_combined_active(x3: u32, y3: u32, grid3_w: u32, grid3_h: u32) -> bool {
     var neighbor_masks: array<u32, 9>;
     for (var mi: u32 = 0u; mi < 9u; mi = mi + 1u) {
         neighbor_masks[mi] = 0u;
@@ -176,35 +134,52 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let g_active: bool = (inactive_dirs_g < 7u) && (edge_dirs_g >= 3u);
     let b_active: bool = (inactive_dirs_b < 7u) && (edge_dirs_b >= 3u);
     let combined_active: bool = r_active || g_active || b_active;
+    return combined_active;
+}
 
-    var mask: u32 = 0u;
-    mask = mask | select(MASK_INACTIVE, MASK_ACTIVE, combined_active);
+@compute @workgroup_size(16, 16)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+    if (arrayLength(&input_img_info) < 2u) {
+        return;
+    }
+    let height: u32 = input_img_info[0];
+    let width: u32 = input_img_info[1];
+    if (width == 0u || height == 0u) {
+        return;
+    }
 
-    let cnt_n_any: u32 = max(max(cnt_n_r, cnt_n_g), cnt_n_b);
-    let cnt_ne_any: u32 = max(max(cnt_ne_r, cnt_ne_g), cnt_ne_b);
-    let cnt_e_any: u32 = max(max(cnt_e_r, cnt_e_g), cnt_e_b);
-    let cnt_se_any: u32 = max(max(cnt_se_r, cnt_se_g), cnt_se_b);
-    let cnt_s_any: u32 = max(max(cnt_s_r, cnt_s_g), cnt_s_b);
-    let cnt_sw_any: u32 = max(max(cnt_sw_r, cnt_sw_g), cnt_sw_b);
-    let cnt_w_any: u32 = max(max(cnt_w_r, cnt_w_g), cnt_w_b);
-    let cnt_nw_any: u32 = max(max(cnt_nw_r, cnt_nw_g), cnt_nw_b);
-    let all_dirs_active: bool =
-        (cnt_n_any >= DIR_ACTIVE_TH) &&
-        (cnt_ne_any >= DIR_ACTIVE_TH) &&
-        (cnt_e_any >= DIR_ACTIVE_TH) &&
-        (cnt_se_any >= DIR_ACTIVE_TH) &&
-        (cnt_s_any >= DIR_ACTIVE_TH) &&
-        (cnt_sw_any >= DIR_ACTIVE_TH) &&
-        (cnt_w_any >= DIR_ACTIVE_TH) &&
-        (cnt_nw_any >= DIR_ACTIVE_TH);
-    mask = mask | select(0u, LOCK_N, cnt_n_any >= DIR_ACTIVE_TH);
-    mask = mask | select(0u, LOCK_E, cnt_e_any >= DIR_ACTIVE_TH);
-    mask = mask | select(0u, LOCK_S, cnt_s_any >= DIR_ACTIVE_TH);
-    mask = mask | select(0u, LOCK_W, cnt_w_any >= DIR_ACTIVE_TH);
+    let grid3_w: u32 = width;
+    let grid3_h: u32 = height;
+    if (grid3_w == 0u || grid3_h == 0u) {
+        return;
+    }
 
-    if (all_dirs_active) {
-        out_mask[idx] = 0u;
-    } else {
-        out_mask[idx] = mask;
+    let out_w: u32 = (grid3_w + 1u) / 2u;
+    let out_h: u32 = (grid3_h + 1u) / 2u;
+    if (gid.x >= out_w || gid.y >= out_h) {
+        return;
+    }
+
+    let base_x: u32 = gid.x * 2u;
+    let base_y: u32 = gid.y * 2u;
+    var active_cnt: u32 = 0u;
+    var total_cnt: u32 = 0u;
+    for (var dy: u32 = 0u; dy < 2u; dy = dy + 1u) {
+        let y3: u32 = base_y + dy;
+        if (y3 >= grid3_h) { continue; }
+        for (var dx: u32 = 0u; dx < 2u; dx = dx + 1u) {
+            let x3: u32 = base_x + dx;
+            if (x3 >= grid3_w) { continue; }
+            total_cnt = total_cnt + 1u;
+            if (compute_combined_active(x3, y3, grid3_w, grid3_h)) {
+                active_cnt = active_cnt + 1u;
+            }
+        }
+    }
+
+    let packed: u32 = (active_cnt << 16u) | (total_cnt & 0xFFFFu);
+    let out_idx: u32 = gid.y * out_w + gid.x;
+    if (out_idx < arrayLength(&out_mask)) {
+        out_mask[out_idx] = packed;
     }
 }

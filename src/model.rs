@@ -177,10 +177,10 @@ pub fn layer1(
 ) -> Layer1Outputs {
     let height = img_info[0];
     let width = img_info[1];
-    let grid_w = width;
-    let grid_h = height;
-    let dispatch_w = grid_w;
-    let dispatch_h = grid_h;
+    let out_w = (width + 1) / 2;
+    let out_h = (height + 1) / 2;
+    let dispatch_w = out_w;
+    let dispatch_h = out_h;
     let info = [height, width];
     let n_cells = dispatch_w * dispatch_h;
     let buf_size = (n_cells * 4) as u64;
@@ -223,8 +223,8 @@ pub fn layer1(
         let _ = visualization::save_layer1_mask_overlay(
             src_path,
             &mask,
-            grid_w as usize,
-            grid_h as usize,
+            out_w as usize,
+            out_h as usize,
             "mask",
         );
     }
@@ -243,8 +243,8 @@ pub fn layer2(
     l3_e: &mut std::time::Duration,
     l4_e: &mut std::time::Duration,
 ) {
-    const KERNEL: u32 = 4;
-    const STRIDE: u32 = 2;
+    const KERNEL: u32 = 2;
+    const STRIDE: u32 = 1;
 
     let height = img_info[0];
     let width = img_info[1];
@@ -252,11 +252,13 @@ pub fn layer2(
         return;
     }
 
-    let (out_w, out_h) = if width < KERNEL || height < KERNEL {
+    let l1_w = (width + 1) / 2;
+    let l1_h = (height + 1) / 2;
+    let (out_w, out_h) = if l1_w < 2 || l1_h < 2 {
         (1u32, 1u32)
     } else {
-        let ow = ((width + STRIDE - 1 - KERNEL) / STRIDE) + 1;
-        let oh = ((height + STRIDE - 1 - KERNEL) / STRIDE) + 1;
+        let ow = ((l1_w + STRIDE - 1 - KERNEL) / STRIDE) + 1;
+        let oh = ((l1_h + STRIDE - 1 - KERNEL) / STRIDE) + 1;
         (ow.max(1), oh.max(1))
     };
 

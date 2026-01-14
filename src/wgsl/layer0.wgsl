@@ -2,7 +2,7 @@
 @group(0) @binding(1) var<storage, read> input_img_info: array<u32>;
 @group(0) @binding(2) var<storage, read_write> output_masks: array<u32>;
 
-const EDGE_TH: i32 = 10;
+const EDGE_TH: i32 = 15;
 
 fn load_rgb(x: i32, y: i32, width: u32, height: u32) -> vec3<i32> {
     if (width == 0u || height == 0u) {

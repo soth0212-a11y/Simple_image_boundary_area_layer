@@ -220,10 +220,7 @@ pub fn save_layer1_mask_overlay(
         return Ok(());
     }
     let cell_count = grid3_w * grid3_h;
-    let stride_w = (grid3_w + 1) / 2;
-    let stride_h = (grid3_h + 1) / 2;
-    let sparse_count = stride_w * stride_h;
-    if masks.len() < sparse_count {
+    if masks.len() < cell_count {
         return Ok(());
     }
 
@@ -240,41 +237,18 @@ pub fn save_layer1_mask_overlay(
     let color_active = Rgba([255, 80, 80, 255]);
     let color_inactive = Rgba([128, 128, 128, 255]);
 
-    if masks.len() == cell_count {
-        for idx in 0..cell_count {
-            let m = masks[idx];
-            let active = (m & (1u32 << 1u32)) != 0u32;
+    for idx in 0..cell_count {
+        let m = masks[idx];
+        let active = (m >> 16) & 0xFFFF;
+        let total = m & 0xFFFF;
+        let is_active = total != 0 && active * 2 >= total;
 
-            let x = idx % grid3_w;
-            let y = idx / grid3_w;
-            let (sx0, sx1) = span_1d(x, grid3_w, orig_w);
-            let (sy0, sy1) = span_1d(y, grid3_h, orig_h);
-            let color = if active { color_active } else { color_inactive };
-            fill_rect(&mut img, sx0, sy0, sx1, sy1, color);
-        }
-    } else {
-        for sy in 0..stride_h {
-            for sx in 0..stride_w {
-                let m = masks[sy * stride_w + sx];
-                let active = (m & (1u32 << 1u32)) != 0u32;
-
-                let x = sx * 2;
-                let y = sy * 2;
-                let base_x = x * 3;
-                let base_y = y * 3;
-                let span = 3 * 2;
-                let color = if active { color_active } else { color_inactive };
-                for dy in 0..span {
-                    for dx in 0..span {
-                        let px = (base_x + dx).min(orig_w - 1) as i32;
-                        let py = (base_y + dy).min(orig_h - 1) as i32;
-                        let px = px.clamp(0, w - 1) as u32;
-                        let py = py.clamp(0, h - 1) as u32;
-                        img.put_pixel(px, py, color);
-                    }
-                }
-            }
-        }
+        let x = idx % grid3_w;
+        let y = idx / grid3_w;
+        let (sx0, sx1) = span_1d(x, grid3_w, orig_w);
+        let (sy0, sy1) = span_1d(y, grid3_h, orig_h);
+        let color = if is_active { color_active } else { color_inactive };
+        fill_rect(&mut img, sx0, sy0, sx1, sy1, color);
     }
 
     fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
