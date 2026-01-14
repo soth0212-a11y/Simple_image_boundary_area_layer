@@ -25,6 +25,16 @@ pub fn span_1d(cell: usize, grid: usize, orig: usize) -> (usize, usize) {
     (s0.min(orig - 1), s1.min(orig - 1))
 }
 
+#[inline]
+fn span_box(coord0: u32, coord1: u32, grid: usize, orig: usize) -> (usize, usize) {
+    if grid == 0 || orig == 0 {
+        return (0, 0);
+    }
+    let s0 = (coord0 as usize * orig) / grid;
+    let s1 = ((coord1 as usize * orig) / grid).saturating_sub(1);
+    (s0.min(orig - 1), s1.min(orig - 1))
+}
+
 fn high_vis_dir_colors() -> [Rgba<u8>; 8] {
     [
         Rgba([0, 255, 255, 255]),   // N  cyan
@@ -293,62 +303,190 @@ pub fn save_layer2_overlay(
     Ok(())
 }
 
-pub fn save_layer3_boxes_overlay(
+pub fn save_layer3_pass1_anchor_overlay(
     src_path: &Path,
-    pooled_mask: &[u32],
-    grid_w: usize,
-    grid_h: usize,
-    pre_boxes: &[(u32, u32, u32, u32)],
-    kept_boxes: &[(u32, u32, u32, u32)],
-    tag: &str,
+    out_w: usize,
+    out_h: usize,
+    aw: usize,
+    ah: usize,
+    anchor_bbox: &[u32],
+    anchor_score: &[u32],
+    anchor_meta: &[u32],
 ) -> Result<(), image::ImageError> {
-    if grid_w == 0 || grid_h == 0 {
+    if out_w == 0 || out_h == 0 || aw == 0 || ah == 0 {
         return Ok(());
     }
-    let mut img_pre = image::RgbaImage::new(grid_w as u32, grid_h as u32);
-    let mut img_post = image::RgbaImage::new(grid_w as u32, grid_h as u32);
-    let color_active = Rgba([200, 200, 200, 255]);
-    let color_pre = Rgba([255, 255, 0, 255]);
-    let color_post = Rgba([0, 255, 0, 255]);
-
-    if pooled_mask.len() >= grid_w * grid_h {
-        for y in 0..grid_h {
-            for x in 0..grid_w {
-                let idx = y * grid_w + x;
-                if (pooled_mask[idx] & (1u32 << 1u32)) != 0u32 {
-                    img_pre.put_pixel(x as u32, y as u32, color_active);
-                    img_post.put_pixel(x as u32, y as u32, color_active);
-                }
-            }
-        }
+    let anchor_count = aw * ah;
+    if anchor_bbox.len() < anchor_count * 2 || anchor_score.len() < anchor_count || anchor_meta.len() < anchor_count {
+        return Ok(());
     }
 
-    for &(x0, y0, x1, y1) in pre_boxes {
+    let mut img = image::open(src_path)?.to_rgba8();
+    let orig_w = img.width() as usize;
+    let orig_h = img.height() as usize;
+    if orig_w == 0 || orig_h == 0 {
+        return Ok(());
+    }
+
+    let color_valid = Rgba([0, 255, 0, 255]);
+    let color_boundary = Rgba([255, 128, 0, 255]);
+
+    for idx in 0..anchor_count {
+        let meta = anchor_meta[idx];
+        if (meta & 1u32) == 0u32 {
+            continue;
+        }
+        let bbox0 = anchor_bbox[idx * 2];
+        let bbox1 = anchor_bbox[idx * 2 + 1];
+        let x0 = (bbox0 & 0xFFFF) as u32;
+        let y0 = (bbox0 >> 16) as u32;
+        let x1 = (bbox1 & 0xFFFF) as u32;
+        let y1 = (bbox1 >> 16) as u32;
         if x1 <= x0 || y1 <= y0 {
             continue;
         }
-        let sx0 = (x0 as usize).min(grid_w - 1);
-        let sy0 = (y0 as usize).min(grid_h - 1);
-        let sx1 = (x1.saturating_sub(1) as usize).min(grid_w - 1);
-        let sy1 = (y1.saturating_sub(1) as usize).min(grid_h - 1);
-        draw_rect_outline(&mut img_pre, sx0, sy0, sx1, sy1, color_pre);
-    }
-    for &(x0, y0, x1, y1) in kept_boxes {
-        if x1 <= x0 || y1 <= y0 {
-            continue;
-        }
-        let sx0 = (x0 as usize).min(grid_w - 1);
-        let sy0 = (y0 as usize).min(grid_h - 1);
-        let sx1 = (x1.saturating_sub(1) as usize).min(grid_w - 1);
-        let sy1 = (y1.saturating_sub(1) as usize).min(grid_h - 1);
-        draw_rect_outline(&mut img_post, sx0, sy0, sx1, sy1, color_post);
+        let (sx0, sx1) = span_box(x0, x1, out_w, orig_w);
+        let (sy0, sy1) = span_box(y0, y1, out_h, orig_h);
+        let ended_by_boundary = (meta & 2u32) != 0u32;
+        let color = if ended_by_boundary { color_boundary } else { color_valid };
+        let _score = anchor_score[idx];
+        draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color);
     }
 
     fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    img_pre.save(Path::new(SAVE_DIR).join(format!("{}_l3_pre_{}_{}.png", stem, tag, time)))?;
-    img_post.save(Path::new(SAVE_DIR).join(format!("{}_l3_post_{}_{}.png", stem, tag, time)))?;
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_pass1_anchors_{}.png", stem, time)))?;
+    Ok(())
+}
+
+pub fn save_layer3_pass2_block_topk_overlay(
+    src_path: &Path,
+    out_w: usize,
+    out_h: usize,
+    bw: usize,
+    bh: usize,
+    block_boxes: &[u32],
+    block_scores: &[u32],
+    block_valid: &[u32],
+) -> Result<(), image::ImageError> {
+    if out_w == 0 || out_h == 0 || bw == 0 || bh == 0 {
+        return Ok(());
+    }
+    let block_count = bw * bh;
+    let slot_count = block_count * 16;
+    if block_boxes.len() < slot_count * 2 || block_scores.len() < slot_count || block_valid.len() < slot_count {
+        return Ok(());
+    }
+
+    let mut img = image::open(src_path)?.to_rgba8();
+    let orig_w = img.width() as usize;
+    let orig_h = img.height() as usize;
+    if orig_w == 0 || orig_h == 0 {
+        return Ok(());
+    }
+
+    let colors = [
+        Rgba([255, 0, 0, 255]),
+        Rgba([255, 128, 0, 255]),
+        Rgba([255, 255, 0, 255]),
+        Rgba([0, 255, 0, 255]),
+        Rgba([0, 128, 255, 255]),
+    ];
+
+    for idx in 0..slot_count {
+        if (block_valid[idx] & 1u32) == 0u32 {
+            continue;
+        }
+        let bidx = idx * 2;
+        let bbox0 = block_boxes[bidx];
+        let bbox1 = block_boxes[bidx + 1];
+        let x0 = (bbox0 & 0xFFFF) as u32;
+        let y0 = (bbox0 >> 16) as u32;
+        let x1 = (bbox1 & 0xFFFF) as u32;
+        let y1 = (bbox1 >> 16) as u32;
+        if x1 <= x0 || y1 <= y0 {
+            continue;
+        }
+        let (sx0, sx1) = span_box(x0, x1, out_w, orig_w);
+        let (sy0, sy1) = span_box(y0, y1, out_h, orig_h);
+        let rank = idx % 5;
+        let _score = block_scores[idx];
+        draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, colors[rank]);
+    }
+
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_pass2_top5_{}.png", stem, time)))?;
+    Ok(())
+}
+
+pub fn save_layer3_block_overlay(
+    src_path: &Path,
+    pooled_mask: &[u32],
+    out_w: usize,
+    out_h: usize,
+    block_boxes: &[u32],
+    block_valid: &[u32],
+    tag: &str,
+) -> Result<(), image::ImageError> {
+    if out_w == 0 || out_h == 0 {
+        return Ok(());
+    }
+    let slot_count = block_valid.len();
+    if block_boxes.len() < slot_count * 2 {
+        return Ok(());
+    }
+
+    let mut img = image::RgbaImage::new(out_w as u32, out_h as u32);
+    let color_active = Rgba([200, 200, 200, 255]);
+    let color_box = Rgba([0, 200, 255, 255]);
+    let color_boundary = Rgba([255, 128, 0, 255]);
+    const FLAG_TOUCH_N: u32 = 16u32;
+    const FLAG_TOUCH_E: u32 = 32u32;
+    const FLAG_TOUCH_S: u32 = 64u32;
+    const FLAG_TOUCH_W: u32 = 128u32;
+
+    if pooled_mask.len() >= out_w * out_h {
+        for y in 0..out_h {
+            for x in 0..out_w {
+                let idx = y * out_w + x;
+                if (pooled_mask[idx] & (1u32 << 1u32)) != 0u32 {
+                    img.put_pixel(x as u32, y as u32, color_active);
+                }
+            }
+        }
+    }
+
+    for idx in 0..slot_count {
+        let flags = block_valid[idx];
+        if (flags & 1u32) == 0u32 {
+            continue;
+        }
+        let bidx = idx * 2;
+        let b0 = block_boxes[bidx];
+        let b1 = block_boxes[bidx + 1];
+        let x0 = (b0 & 0xFFFF) as u32;
+        let y0 = (b0 >> 16) as u32;
+        let x1 = (b1 & 0xFFFF) as u32;
+        let y1 = (b1 >> 16) as u32;
+        if x1 <= x0 || y1 <= y0 {
+            continue;
+        }
+        let sx0 = (x0 as usize).min(out_w - 1);
+        let sy0 = (y0 as usize).min(out_h - 1);
+        let sx1 = (x1.saturating_sub(1) as usize).min(out_w - 1);
+        let sy1 = (y1.saturating_sub(1) as usize).min(out_h - 1);
+        let touched = (flags & (FLAG_TOUCH_N | FLAG_TOUCH_E | FLAG_TOUCH_S | FLAG_TOUCH_W)) != 0u32;
+        let color = if touched { color_boundary } else { color_box };
+        draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color);
+    }
+
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_block_{}_{}.png", stem, tag, time)))?;
     Ok(())
 }
 

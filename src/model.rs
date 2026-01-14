@@ -7,6 +7,7 @@ use crate::config;
 use crate::preprocessing;
 use crate::visualization; // 시각화 모듈 사용
 use crate::l3_gpu;
+use crate::l4_gpu;
 
 // ---- 상수 및 구조체 정의 ----
 #[repr(C)]
@@ -65,6 +66,13 @@ pub struct layer_static_values {
 pub struct layer2_static_values {
     pub bindgroup_layout: wgpu::BindGroupLayout,
     pub compute_pipeline: wgpu::ComputePipeline,
+}
+
+pub struct L4Pipelines {
+    pub flatten: layer_static_values,
+    pub bin_fill: layer_static_values,
+    pub merge_offset: layer_static_values,
+    pub reduce: layer_static_values,
 }
 
 
@@ -140,6 +148,74 @@ pub fn layer2_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> 
         cache: None,
     });
     layer2_static_values { bindgroup_layout, compute_pipeline }
+}
+
+pub fn layer4_flatten_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> layer_static_values {
+    let bindgroup_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("l4_flatten_layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+        ][..],
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&bindgroup_layout], push_constant_ranges: &[][..] });
+    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor { label: Some("l4_flatten_pipeline"), layout: Some(&pipeline_layout), module: &shader_module, entry_point: Some("main"), compilation_options: Default::default(), cache: None });
+    layer_static_values { bindgroup_layout, compute_pipeline }
+}
+
+pub fn layer4_bin_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> layer_static_values {
+    let bindgroup_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("l4_bin_layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 6, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+        ][..],
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&bindgroup_layout], push_constant_ranges: &[][..] });
+    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor { label: Some("l4_bin_pipeline"), layout: Some(&pipeline_layout), module: &shader_module, entry_point: Some("main"), compilation_options: Default::default(), cache: None });
+    layer_static_values { bindgroup_layout, compute_pipeline }
+}
+
+pub fn layer4_merge_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> layer_static_values {
+    let bindgroup_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("l4_merge_layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 6, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+        ][..],
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&bindgroup_layout], push_constant_ranges: &[][..] });
+    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor { label: Some("l4_merge_pipeline"), layout: Some(&pipeline_layout), module: &shader_module, entry_point: Some("main"), compilation_options: Default::default(), cache: None });
+    layer_static_values { bindgroup_layout, compute_pipeline }
+}
+
+pub fn layer4_reduce_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> layer_static_values {
+    let bindgroup_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("l4_reduce_layout"),
+        entries: &[
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+        ][..],
+    });
+    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&bindgroup_layout], push_constant_ranges: &[][..] });
+    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor { label: Some("l4_reduce_pipeline"), layout: Some(&pipeline_layout), module: &shader_module, entry_point: Some("main"), compilation_options: Default::default(), cache: None });
+    layer_static_values { bindgroup_layout, compute_pipeline }
 }
 
 
@@ -507,6 +583,8 @@ pub fn model(
     l2_static: &layer2_static_values,
     l3_pipelines: &l3_gpu::L3GpuPipelines,
     l3_buffers: &mut Option<l3_gpu::L3GpuBuffers>,
+    l4_pipelines: &L4Pipelines,
+    l4_buffers: &mut Option<l4_gpu::L4GpuBuffers>,
     src_path: &Path,
 ) {
     let total_start = Instant::now();
@@ -530,7 +608,7 @@ pub fn model(
     let height = info[0];
     let width = info[1];
     let mut pooled_cpu: Option<Vec<u32>> = None;
-    if (config::get().save_layer2 || config::get().save_layer4) && l2_out.out_w > 0 && l2_out.out_h > 0 {
+    if (config::get().save_layer2 || config::get().save_layer3 || config::get().save_layer4) && l2_out.out_w > 0 && l2_out.out_h > 0 {
         let out_size = (l2_out.out_w * l2_out.out_h) as u64 * 4;
         let pooled = readback_u32_buffer(device, queue, &l2_out.mask, out_size);
         if config::get().save_layer2 {
@@ -593,15 +671,13 @@ pub fn model(
             let block_count = (bw2 * bh2) as usize;
             let block_slots = block_count * 16;
             let mut block_boxes: Vec<u32> = Vec::new();
-            let mut block_scores: Vec<u32> = Vec::new();
             let mut block_valid: Vec<u32> = Vec::new();
 
-            if block_slots > 0 {
+            if config::get().save_layer3 && block_slots > 0 {
                 let boxes_bytes = (block_slots * 2 * 4) as u64;
-                let scores_bytes = (block_slots * 4) as u64;
                 block_boxes = readback_u32_buffer(device, queue, &l3_bufs.block_boxes, boxes_bytes);
-                block_scores = readback_u32_buffer(device, queue, &l3_bufs.block_scores, scores_bytes);
-                block_valid = readback_u32_buffer(device, queue, &l3_bufs.block_valid, scores_bytes);
+                let valid_bytes = (block_slots * 4) as u64;
+                block_valid = readback_u32_buffer(device, queue, &l3_bufs.block_valid, valid_bytes);
             }
 
             if config::get().save_layer3 {
@@ -626,53 +702,151 @@ pub fn model(
                 }
 
                 if block_slots > 0 {
-                    let _ = visualization::save_layer3_pass2_block_topk_overlay(
-                        src_path,
-                        l2_out.out_w as usize,
-                        l2_out.out_h as usize,
-                        bw2 as usize,
-                        bh2 as usize,
-                        &block_boxes,
-                        &block_scores,
-                        &block_valid,
-                    );
+                    if let Some(ref pooled) = pooled_cpu {
+                        let _ = visualization::save_layer3_block_overlay(
+                            src_path,
+                            pooled,
+                            l2_out.out_w as usize,
+                            l2_out.out_h as usize,
+                            &block_boxes,
+                            &block_valid,
+                            "l3",
+                        );
+                    }
                 }
             }
 
             l3_e = l3_s.elapsed();
 
             if block_slots > 0 {
-                let mut l3_boxes: Vec<BBoxScore> = Vec::new();
-                for idx in 0..block_slots {
-                    let flags = block_valid.get(idx).copied().unwrap_or(0);
-                    if (flags & 1) == 0 {
-                        continue;
+                let l4_s = Instant::now();
+
+                let nmax = block_slots as u32;
+                let grid_w = (l2_out.out_w + 40) / 41;
+                let grid_h = (l2_out.out_h + 40) / 41;
+                let rebuild = l4_buffers
+                    .as_ref()
+                    .map(|b| b.nmax != nmax || b.grid_w != grid_w || b.grid_h != grid_h)
+                    .unwrap_or(true);
+                if rebuild {
+                    *l4_buffers = Some(l4_gpu::ensure_l4_buffers(device, nmax, grid_w, grid_h));
+                }
+                let l4_bufs = l4_buffers.as_ref().unwrap();
+
+                queue.write_buffer(&l4_bufs.flat_count, 0, bytemuck::cast_slice(&[0u32]));
+
+                let flatten_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &l4_pipelines.flatten.bindgroup_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: l3_bufs.block_boxes.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 1, resource: l3_bufs.block_valid.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 2, resource: l4_bufs.flat_boxes.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 3, resource: l4_bufs.flat_count.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 4, resource: l4_bufs.label.as_entire_binding() },
+                    ],
+                    label: Some("l4_flatten_bg"),
+                });
+
+                let dispatch_x = (nmax + 255) / 256;
+                let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l4_flatten_enc") });
+                {
+                    let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l4_flatten_pass"), timestamp_writes: None });
+                    pass.set_pipeline(&l4_pipelines.flatten.compute_pipeline);
+                    pass.set_bind_group(0, &flatten_bg, &[][..]);
+                    pass.dispatch_workgroups(dispatch_x, 1, 1);
+                }
+                queue.submit([enc.finish()]);
+
+                let bin_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &l4_pipelines.bin_fill.bindgroup_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: info_buf.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 1, resource: l4_bufs.flat_boxes.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 2, resource: l4_bufs.flat_count.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 3, resource: l4_bufs.params.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 4, resource: l4_bufs.cell_counts.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 5, resource: l4_bufs.cell_items.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 6, resource: l4_bufs.overflow_flags.as_entire_binding() },
+                    ],
+                    label: Some("l4_bin_bg"),
+                });
+
+                let merge_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &l4_pipelines.merge_offset.bindgroup_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: info_buf.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 1, resource: l4_bufs.flat_boxes.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 2, resource: l4_bufs.flat_count.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 3, resource: l4_bufs.params.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 4, resource: l4_bufs.cell_counts.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 5, resource: l4_bufs.cell_items.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 6, resource: l4_bufs.label.as_entire_binding() },
+                    ],
+                    label: Some("l4_merge_bg"),
+                });
+
+                let reduce_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &l4_pipelines.reduce.bindgroup_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: l4_bufs.flat_boxes.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 1, resource: l4_bufs.flat_count.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 2, resource: l4_bufs.label.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 3, resource: l4_bufs.out_boxes.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 4, resource: l4_bufs.out_valid.as_entire_binding() },
+                    ],
+                    label: Some("l4_reduce_bg"),
+                });
+
+                let zero_cells = vec![0u8; (l4_bufs.cell_count as usize) * 4];
+                let offsets: [(i32, i32); 4] = [(0, 0), (0, 3), (3, 0), (3, 3)];
+                for (ox, oy) in offsets {
+                    let params = [ox, oy];
+                    queue.write_buffer(&l4_bufs.params, 0, bytemuck::cast_slice(&params));
+                    queue.write_buffer(&l4_bufs.cell_counts, 0, &zero_cells);
+                    queue.write_buffer(&l4_bufs.overflow_flags, 0, &zero_cells);
+
+                    let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l4_bin_merge_enc") });
+                    {
+                        let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l4_bin_pass"), timestamp_writes: None });
+                        pass.set_pipeline(&l4_pipelines.bin_fill.compute_pipeline);
+                        pass.set_bind_group(0, &bin_bg, &[][..]);
+                        pass.dispatch_workgroups(dispatch_x, 1, 1);
                     }
-                    let bidx = idx * 2;
-                    if bidx + 1 >= block_boxes.len() {
-                        continue;
+                    {
+                        let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l4_merge_pass"), timestamp_writes: None });
+                        pass.set_pipeline(&l4_pipelines.merge_offset.compute_pipeline);
+                        pass.set_bind_group(0, &merge_bg, &[][..]);
+                        pass.dispatch_workgroups(dispatch_x, 1, 1);
                     }
-                    let bbox0 = block_boxes[bidx];
-                    let bbox1 = block_boxes[bidx + 1];
-                    let x0 = (bbox0 & 0xFFFF) as u32;
-                    let y0 = (bbox0 >> 16) as u32;
-                    let x1 = (bbox1 & 0xFFFF) as u32;
-                    let y1 = (bbox1 >> 16) as u32;
-                    if x1 <= x0 || y1 <= y0 {
-                        continue;
+                    queue.submit([enc.finish()]);
+
+                    if config::get().save_layer4 {
+                        let overflow_bytes = (l4_bufs.cell_count as u64) * 4;
+                        let overflow = readback_u32_buffer(device, queue, &l4_bufs.overflow_flags, overflow_bytes);
+                        let overflowed = overflow.iter().filter(|&&v| v != 0u32).count();
+                        if overflowed > 0 {
+                            eprintln!("l4 overflow cells (offset {}, {}): {}", ox, oy, overflowed);
+                        }
                     }
-                    let score = block_scores.get(idx).copied().unwrap_or(0) as u64;
-                    let area = ((x1 - x0) as u64) * ((y1 - y0) as u64);
-                    l3_boxes.push(BBoxScore {
-                        bbox: BBox { x0, y0, x1, y1 },
-                        score,
-                        area,
-                        flags,
-                    });
                 }
 
-                let l4_s = Instant::now();
-                let l4 = l4_union_merge(&l3_boxes);
+                let mut out_boxes_init = vec![0u32; nmax as usize * 2];
+                for i in 0..nmax as usize {
+                    out_boxes_init[i * 2] = 0xFFFF_FFFFu32;
+                }
+                let out_valid_zero = vec![0u8; nmax as usize * 4];
+                queue.write_buffer(&l4_bufs.out_boxes, 0, bytemuck::cast_slice(&out_boxes_init));
+                queue.write_buffer(&l4_bufs.out_valid, 0, &out_valid_zero);
+
+                let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l4_reduce_enc") });
+                {
+                    let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l4_reduce_pass"), timestamp_writes: None });
+                    pass.set_pipeline(&l4_pipelines.reduce.compute_pipeline);
+                    pass.set_bind_group(0, &reduce_bg, &[][..]);
+                    pass.dispatch_workgroups(dispatch_x, 1, 1);
+                }
+                queue.submit([enc.finish()]);
+
                 l4_e = l4_s.elapsed();
 
                 if config::get().save_layer4 && l2_out.out_w > 0 && l2_out.out_h > 0 {
@@ -681,10 +855,30 @@ pub fn model(
                         pooled_cpu = Some(readback_u32_buffer(device, queue, &l2_out.mask, out_size));
                     }
                     if let Some(ref pooled) = pooled_cpu {
-                        let l4_boxes: Vec<(u32, u32, u32, u32)> = l4
-                            .iter()
-                            .map(|b| (b.bbox.x0, b.bbox.y0, b.bbox.x1, b.bbox.y1))
-                            .collect();
+                        let out_boxes_bytes = (nmax as u64) * 2 * 4;
+                        let out_valid_bytes = (nmax as u64) * 4;
+                        let out_boxes = readback_u32_buffer(device, queue, &l4_bufs.out_boxes, out_boxes_bytes);
+                        let out_valid = readback_u32_buffer(device, queue, &l4_bufs.out_valid, out_valid_bytes);
+                        let mut l4_boxes: Vec<(u32, u32, u32, u32)> = Vec::new();
+                        for i in 0..(nmax as usize) {
+                            if out_valid.get(i).copied().unwrap_or(0) == 0 {
+                                continue;
+                            }
+                            let bidx = i * 2;
+                            if bidx + 1 >= out_boxes.len() {
+                                break;
+                            }
+                            let b0 = out_boxes[bidx];
+                            let b1 = out_boxes[bidx + 1];
+                            let x0 = (b0 & 0xFFFF) as u32;
+                            let y0 = (b0 >> 16) as u32;
+                            let x1 = (b1 & 0xFFFF) as u32;
+                            let y1 = (b1 >> 16) as u32;
+                            if x1 <= x0 || y1 <= y0 {
+                                continue;
+                            }
+                            l4_boxes.push((x0, y0, x1, y1));
+                        }
                         let _ = visualization::save_layer4_boxes_overlay(
                             src_path,
                             pooled,
