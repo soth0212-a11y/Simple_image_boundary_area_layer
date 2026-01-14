@@ -4,9 +4,10 @@
 @group(0) @binding(1) var<storage, read> anchor_bbox: array<u32>;
 @group(0) @binding(2) var<storage, read> anchor_score: array<u32>;
 @group(0) @binding(3) var<storage, read> anchor_meta: array<u32>;
-@group(0) @binding(4) var<storage, read_write> stage1_boxes: array<u32>;  // 4 slots * 2
-@group(0) @binding(5) var<storage, read_write> stage1_scores: array<u32>; // 4 slots
-@group(0) @binding(6) var<storage, read_write> stage1_valid: array<u32>;  // 4 slots
+@group(0) @binding(4) var<storage, read> anchor_act: array<u32>;
+@group(0) @binding(5) var<storage, read_write> stage1_boxes: array<u32>;  // 4 slots * 2
+@group(0) @binding(6) var<storage, read_write> stage1_scores: array<u32>; // 4 slots
+@group(0) @binding(7) var<storage, read_write> stage1_valid: array<u32>;  // 4 slots
 
 struct Cand {
     valid: bool,
@@ -126,7 +127,7 @@ fn union_root(parent: ptr<function, array<u32, 4>>, a: u32, b: u32) {
     }
 }
 
-fn read_anchor(ax: u32, ay: u32, aw: u32, ah: u32) -> Cand {
+fn read_anchor(ax: u32, ay: u32, aw: u32, ah: u32, mean_act: u32) -> Cand {
     if (ax >= aw || ay >= ah) {
         return Cand(false, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u);
     }
@@ -137,6 +138,12 @@ fn read_anchor(ax: u32, ay: u32, aw: u32, ah: u32) -> Cand {
     let flags: u32 = anchor_meta[idx];
     if ((flags & FLAG_VALID) == 0u) {
         return Cand(false, 0u, 0u, 0u, 0u, 0u, 0u, idx, flags);
+    }
+    if (idx < arrayLength(&anchor_act)) {
+        let act: u32 = anchor_act[idx];
+        if (act * 100u < mean_act * 60u) {
+            return Cand(false, 0u, 0u, 0u, 0u, 0u, 0u, idx, flags);
+        }
     }
     let bbox_idx: u32 = idx * 2u;
     if (bbox_idx + 1u >= arrayLength(&anchor_bbox)) {
@@ -205,30 +212,51 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let base_ax: u32 = gid.x * 4u;
     let base_ay: u32 = gid.y * 4u;
 
+    var sum_act: u32 = 0u;
+    var cnt_valid: u32 = 0u;
+    for (var dy: u32 = 0u; dy < 4u; dy = dy + 1u) {
+        let ay: u32 = base_ay + dy;
+        if (ay >= ah) { continue; }
+        for (var dx: u32 = 0u; dx < 4u; dx = dx + 1u) {
+            let ax: u32 = base_ax + dx;
+            if (ax >= aw) { continue; }
+            let idx: u32 = ay * aw + ax;
+            if (idx >= arrayLength(&anchor_meta)) { continue; }
+            let flags: u32 = anchor_meta[idx];
+            if ((flags & FLAG_VALID) == 0u) { continue; }
+            if (idx < arrayLength(&anchor_act)) {
+                sum_act = sum_act + anchor_act[idx];
+                cnt_valid = cnt_valid + 1u;
+            }
+        }
+    }
+    if (cnt_valid == 0u) { return; }
+    let mean_act: u32 = sum_act / cnt_valid;
+
     // Stage1: per 2x2 subblock
     let a0 = merge_subblock(
-        read_anchor(base_ax + 0u, base_ay + 0u, aw, ah),
-        read_anchor(base_ax + 1u, base_ay + 0u, aw, ah),
-        read_anchor(base_ax + 0u, base_ay + 1u, aw, ah),
-        read_anchor(base_ax + 1u, base_ay + 1u, aw, ah)
+        read_anchor(base_ax + 0u, base_ay + 0u, aw, ah, mean_act),
+        read_anchor(base_ax + 1u, base_ay + 0u, aw, ah, mean_act),
+        read_anchor(base_ax + 0u, base_ay + 1u, aw, ah, mean_act),
+        read_anchor(base_ax + 1u, base_ay + 1u, aw, ah, mean_act)
     );
     let a1 = merge_subblock(
-        read_anchor(base_ax + 2u, base_ay + 0u, aw, ah),
-        read_anchor(base_ax + 3u, base_ay + 0u, aw, ah),
-        read_anchor(base_ax + 2u, base_ay + 1u, aw, ah),
-        read_anchor(base_ax + 3u, base_ay + 1u, aw, ah)
+        read_anchor(base_ax + 2u, base_ay + 0u, aw, ah, mean_act),
+        read_anchor(base_ax + 3u, base_ay + 0u, aw, ah, mean_act),
+        read_anchor(base_ax + 2u, base_ay + 1u, aw, ah, mean_act),
+        read_anchor(base_ax + 3u, base_ay + 1u, aw, ah, mean_act)
     );
     let a2 = merge_subblock(
-        read_anchor(base_ax + 0u, base_ay + 2u, aw, ah),
-        read_anchor(base_ax + 1u, base_ay + 2u, aw, ah),
-        read_anchor(base_ax + 0u, base_ay + 3u, aw, ah),
-        read_anchor(base_ax + 1u, base_ay + 3u, aw, ah)
+        read_anchor(base_ax + 0u, base_ay + 2u, aw, ah, mean_act),
+        read_anchor(base_ax + 1u, base_ay + 2u, aw, ah, mean_act),
+        read_anchor(base_ax + 0u, base_ay + 3u, aw, ah, mean_act),
+        read_anchor(base_ax + 1u, base_ay + 3u, aw, ah, mean_act)
     );
     let a3 = merge_subblock(
-        read_anchor(base_ax + 2u, base_ay + 2u, aw, ah),
-        read_anchor(base_ax + 3u, base_ay + 2u, aw, ah),
-        read_anchor(base_ax + 2u, base_ay + 3u, aw, ah),
-        read_anchor(base_ax + 3u, base_ay + 3u, aw, ah)
+        read_anchor(base_ax + 2u, base_ay + 2u, aw, ah, mean_act),
+        read_anchor(base_ax + 3u, base_ay + 2u, aw, ah, mean_act),
+        read_anchor(base_ax + 2u, base_ay + 3u, aw, ah, mean_act),
+        read_anchor(base_ax + 3u, base_ay + 3u, aw, ah, mean_act)
     );
 
     // Stage2: merge subblocks with IoU T2

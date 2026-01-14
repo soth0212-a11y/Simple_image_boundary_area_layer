@@ -722,8 +722,8 @@ pub fn model(
                 let l4_s = Instant::now();
 
                 let nmax = block_slots as u32;
-                let grid_w = (l2_out.out_w + 40) / 41;
-                let grid_h = (l2_out.out_h + 40) / 41;
+                let grid_w = (l2_out.out_w + 81) / 82;
+                let grid_h = (l2_out.out_h + 81) / 82;
                 let rebuild = l4_buffers
                     .as_ref()
                     .map(|b| b.nmax != nmax || b.grid_w != grid_w || b.grid_h != grid_h)
@@ -798,7 +798,7 @@ pub fn model(
                 });
 
                 let zero_cells = vec![0u8; (l4_bufs.cell_count as usize) * 4];
-                let offsets: [(i32, i32); 4] = [(0, 0), (0, 3), (3, 0), (3, 3)];
+                let offsets: [(i32, i32); 4] = [(0, 0), (0, 41), (41, 0), (41, 41)];
                 for (ox, oy) in offsets {
                     let params = [ox, oy];
                     queue.write_buffer(&l4_bufs.params, 0, bytemuck::cast_slice(&params));

@@ -19,6 +19,7 @@ pub struct L3GpuBuffers {
     pub anchor_bbox: wgpu::Buffer,
     pub anchor_score: wgpu::Buffer,
     pub anchor_meta: wgpu::Buffer,
+    pub anchor_act: wgpu::Buffer,
     pub stage1_boxes: wgpu::Buffer,
     pub stage1_scores: wgpu::Buffer,
     pub stage1_valid: wgpu::Buffer,
@@ -41,6 +42,7 @@ pub fn build_l3_pipelines(
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
         ],
     });
 
@@ -66,9 +68,10 @@ pub fn build_l3_pipelines(
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 6, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 7, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
         ],
     });
 
@@ -124,6 +127,7 @@ pub fn ensure_l3_buffers(device: &wgpu::Device, aw: u32, ah: u32, bw: u32, bh: u
     let block_count = bw2.saturating_mul(bh2) as u64;
     let anchor_bbox_bytes = anchor_count * 2 * 4;
     let anchor_score_bytes = anchor_count * 4;
+    let anchor_act_bytes = anchor_count * 4;
     let stage1_boxes_bytes = stage1_count * 4 * 2 * 4;
     let stage1_scores_bytes = stage1_count * 4 * 4;
     let block_boxes_bytes = block_count * 16 * 2 * 4;
@@ -144,6 +148,12 @@ pub fn ensure_l3_buffers(device: &wgpu::Device, aw: u32, ah: u32, bw: u32, bh: u
     let anchor_meta = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("l3_anchor_meta"),
         size: anchor_score_bytes.max(4),
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
+    let anchor_act = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("l3_anchor_act"),
+        size: anchor_act_bytes.max(4),
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
@@ -196,6 +206,7 @@ pub fn ensure_l3_buffers(device: &wgpu::Device, aw: u32, ah: u32, bw: u32, bh: u
         anchor_bbox,
         anchor_score,
         anchor_meta,
+        anchor_act,
         stage1_boxes,
         stage1_scores,
         stage1_valid,
@@ -232,6 +243,7 @@ pub fn dispatch_l3(
             wgpu::BindGroupEntry { binding: 2, resource: bufs.anchor_bbox.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 3, resource: bufs.anchor_score.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 4, resource: bufs.anchor_meta.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: bufs.anchor_act.as_entire_binding() },
         ],
     });
 
@@ -253,9 +265,10 @@ pub fn dispatch_l3(
             wgpu::BindGroupEntry { binding: 1, resource: bufs.anchor_bbox.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 2, resource: bufs.anchor_score.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 3, resource: bufs.anchor_meta.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: bufs.stage1_boxes.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: bufs.stage1_scores.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 6, resource: bufs.stage1_valid.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 4, resource: bufs.anchor_act.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: bufs.stage1_boxes.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 6, resource: bufs.stage1_scores.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 7, resource: bufs.stage1_valid.as_entire_binding() },
         ],
     });
 

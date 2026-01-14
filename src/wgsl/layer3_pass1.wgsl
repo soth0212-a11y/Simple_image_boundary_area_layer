@@ -5,6 +5,7 @@
 @group(0) @binding(2) var<storage, read_write> anchor_bbox: array<u32>;  // 2*u32 per anchor
 @group(0) @binding(3) var<storage, read_write> anchor_score: array<u32>; // score per anchor
 @group(0) @binding(4) var<storage, read_write> anchor_meta: array<u32>;  // valid/flags per anchor
+@group(0) @binding(5) var<storage, read_write> anchor_act: array<u32>;   // act per anchor
 
 fn expand(v: u32) -> u32 {
     return (v << 1u | v | (v >> 1u)) & 0xFFFFu;
@@ -57,6 +58,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
     var row_mask: array<u32, 16>;
     var col_mask: array<u32, 16>;
+    var act: u32 = 0u;
     for (var i: u32 = 0u; i < 16u; i = i + 1u) {
         row_mask[i] = 0u;
         col_mask[i] = 0u;
@@ -79,6 +81,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             }
         }
         row_mask[y] = row;
+        act = act + countOneBits(row);
     }
 
     let touch_n: bool = row_mask[0] != 0u;
@@ -222,12 +225,24 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx: u32 = gid.y * aw + gid.x;
     let bbox_idx: u32 = idx * 2u;
 
+    if (act < 8u) {
+        valid = false;
+        ended_by_boundary = false;
+        bbox_x0 = 0u;
+        bbox_y0 = 0u;
+        bbox_x1 = 0u;
+        bbox_y1 = 0u;
+    }
+
     if (bbox_idx + 1u < arrayLength(&anchor_bbox)) {
         anchor_bbox[bbox_idx] = (bbox_x0 & 0xFFFFu) | ((bbox_y0 & 0xFFFFu) << 16u);
         anchor_bbox[bbox_idx + 1u] = (bbox_x1 & 0xFFFFu) | ((bbox_y1 & 0xFFFFu) << 16u);
     }
     if (idx < arrayLength(&anchor_score)) {
         anchor_score[idx] = select(0u, score, valid);
+    }
+    if (idx < arrayLength(&anchor_act)) {
+        anchor_act[idx] = act;
     }
     if (idx < arrayLength(&anchor_meta)) {
         var flags: u32 = 0u;

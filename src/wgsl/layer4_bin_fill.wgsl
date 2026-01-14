@@ -11,8 +11,8 @@ struct OffsetParams {
 @group(0) @binding(5) var<storage, read_write> cell_items: array<u32>;
 @group(0) @binding(6) var<storage, read_write> overflow_flags: array<atomic<u32>>;
 
-const STRIDE: u32 = 41u;
-const STRIDE_I: i32 = 41;
+const CELL_SIZE: u32 = 82u;
+const CELL_SIZE_I: i32 = 82;
 const KMAX: u32 = 16u;
 
 fn compute_out_dims(height: u32, width: u32) -> vec2<u32> {
@@ -28,8 +28,8 @@ fn compute_out_dims(height: u32, width: u32) -> vec2<u32> {
 }
 
 fn compute_grid_dims(out_w: u32, out_h: u32) -> vec2<u32> {
-    let grid_w: u32 = (out_w + STRIDE - 1u) / STRIDE;
-    let grid_h: u32 = (out_h + STRIDE - 1u) / STRIDE;
+    let grid_w: u32 = (out_w + CELL_SIZE - 1u) / CELL_SIZE;
+    let grid_h: u32 = (out_h + CELL_SIZE - 1u) / CELL_SIZE;
     return vec2<u32>(grid_w, grid_h);
 }
 
@@ -59,8 +59,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let cx: u32 = (x0 + x1) / 2u;
     let cy: u32 = (y0 + y1) / 2u;
 
-    let sx: i32 = (i32(cx) - params.offset_x) / STRIDE_I;
-    let sy: i32 = (i32(cy) - params.offset_y) / STRIDE_I;
+    let sx: i32 = (i32(cx) - params.offset_x) / CELL_SIZE_I;
+    let sy: i32 = (i32(cy) - params.offset_y) / CELL_SIZE_I;
     let gx: i32 = clamp(sx, 0, i32(grid.x) - 1);
     let gy: i32 = clamp(sy, 0, i32(grid.y) - 1);
     let cell_id: u32 = u32(gy) * grid.x + u32(gx);
