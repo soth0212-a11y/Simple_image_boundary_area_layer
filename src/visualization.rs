@@ -303,6 +303,38 @@ pub fn save_layer2_overlay(
     Ok(())
 }
 
+pub fn save_layer2_inactive_avg_overlay(
+    src_path: &Path,
+    inactive_avg: &[u32],
+    out_w: usize,
+    out_h: usize,
+    tag: &str,
+) -> Result<(), image::ImageError> {
+    if out_w == 0 || out_h == 0 {
+        return Ok(());
+    }
+    if inactive_avg.len() < out_w * out_h {
+        return Ok(());
+    }
+    let mut img = image::RgbaImage::new(out_w as u32, out_h as u32);
+    for py in 0..out_h {
+        for px in 0..out_w {
+            let idx = py * out_w + px;
+            let packed = inactive_avg[idx];
+            let r = (packed & 0xFFu32) as u8;
+            let g = ((packed >> 8u32) & 0xFFu32) as u8;
+            let b = ((packed >> 16u32) & 0xFFu32) as u8;
+            img.put_pixel(px as u32, py as u32, Rgba([r, g, b, 255]));
+        }
+    }
+
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer2_inactive_{}_{}.png", stem, tag, time)))?;
+    Ok(())
+}
+
 pub fn save_layer3_pass1_anchor_overlay(
     src_path: &Path,
     out_w: usize,
@@ -490,50 +522,6 @@ pub fn save_layer3_block_overlay(
     Ok(())
 }
 
-pub fn save_layer4_boxes_overlay(
-    src_path: &Path,
-    pooled_mask: &[u32],
-    grid_w: usize,
-    grid_h: usize,
-    boxes: &[(u32, u32, u32, u32)],
-    tag: &str,
-) -> Result<(), image::ImageError> {
-    if grid_w == 0 || grid_h == 0 {
-        return Ok(());
-    }
-    let mut img = image::RgbaImage::new(grid_w as u32, grid_h as u32);
-    let color_active = Rgba([200, 200, 200, 255]);
-    let color_box = Rgba([0, 200, 255, 255]);
-
-    if pooled_mask.len() >= grid_w * grid_h {
-        for y in 0..grid_h {
-            for x in 0..grid_w {
-                let idx = y * grid_w + x;
-                if (pooled_mask[idx] & (1u32 << 1u32)) != 0u32 {
-                    img.put_pixel(x as u32, y as u32, color_active);
-                }
-            }
-        }
-    }
-
-    for &(x0, y0, x1, y1) in boxes {
-        if x1 <= x0 || y1 <= y0 {
-            continue;
-        }
-        let sx0 = (x0 as usize).min(grid_w - 1);
-        let sy0 = (y0 as usize).min(grid_h - 1);
-        let sx1 = (x1.saturating_sub(1) as usize).min(grid_w - 1);
-        let sy1 = (y1.saturating_sub(1) as usize).min(grid_h - 1);
-        draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color_box);
-    }
-
-    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
-    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
-    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    img.save(Path::new(SAVE_DIR).join(format!("{}_l4_{}_{}.png", stem, tag, time)))?;
-    Ok(())
-}
-
 // ======= CSV 및 데이터 로그 관련 함수 =======
 
 pub fn log_timing_block(
@@ -543,7 +531,6 @@ pub fn log_timing_block(
     l1: std::time::Duration,
     l2: std::time::Duration,
     l3: std::time::Duration,
-    l4: std::time::Duration,
     total: std::time::Duration,
 ) {
     static LOG_WRITER: OnceLock<Mutex<BufWriter<std::fs::File>>> = OnceLock::new();
@@ -559,7 +546,6 @@ pub fn log_timing_block(
         writeln!(w, "layer1: {:?}", l1).ok();
         writeln!(w, "layer2: {:?}", l2).ok();
         writeln!(w, "layer3: {:?}", l3).ok();
-        writeln!(w, "layer4: {:?}", l4).ok();
         writeln!(w, "total: {:?}", total).ok();
         w.flush().ok();
     }

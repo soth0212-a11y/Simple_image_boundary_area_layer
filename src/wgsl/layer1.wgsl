@@ -3,9 +3,11 @@
 // - out_mask: u32 packed as (active_count << 16) | total_count
 // - 모든 연산은 정수(u32/i32)만 사용
 
-@group(0) @binding(0) var<storage, read> input_img_info: array<u32>; // [height, width]
-@group(0) @binding(1) var<storage, read> layer0_masks: array<u32>;   // 1:1 u32 packed (R/G/B 8방향)
-@group(0) @binding(2) var<storage, read_write> out_mask: array<u32>; // packed counts
+@group(0) @binding(0) var input_tex: texture_2d<u32>;
+@group(0) @binding(1) var<storage, read> input_img_info: array<u32>; // [height, width]
+@group(0) @binding(2) var<storage, read> layer0_masks: array<u32>;   // 1:1 u32 packed (R/G/B 8방향)
+@group(0) @binding(3) var<storage, read_write> out_mask: array<u32>; // packed counts
+@group(0) @binding(4) var<storage, read_write> inactive_avg: array<u32>; // packed RGB8
 
 const BIT_N: u32 = 0u;
 const BIT_NE: u32 = 1u;
@@ -137,6 +139,11 @@ fn compute_combined_active(x3: u32, y3: u32, grid3_w: u32, grid3_h: u32) -> bool
     return combined_active;
 }
 
+fn load_rgb_unclamped(x: i32, y: i32) -> vec3<u32> {
+    let p = textureLoad(input_tex, vec2<i32>(x, y), 0);
+    return vec3<u32>(p.x, p.y, p.z);
+}
+
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (arrayLength(&input_img_info) < 2u) {
@@ -164,6 +171,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let base_y: u32 = gid.y * 2u;
     var active_cnt: u32 = 0u;
     var total_cnt: u32 = 0u;
+    var inactive_cnt: u32 = 0u;
+    var inactive_sum: vec3<u32> = vec3<u32>(0u, 0u, 0u);
     for (var dy: u32 = 0u; dy < 2u; dy = dy + 1u) {
         let y3: u32 = base_y + dy;
         if (y3 >= grid3_h) { continue; }
@@ -173,6 +182,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             total_cnt = total_cnt + 1u;
             if (compute_combined_active(x3, y3, grid3_w, grid3_h)) {
                 active_cnt = active_cnt + 1u;
+            } else {
+                let rgb = load_rgb_unclamped(i32(x3), i32(y3));
+                inactive_sum = inactive_sum + rgb;
+                inactive_cnt = inactive_cnt + 1u;
             }
         }
     }
@@ -181,5 +194,15 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let out_idx: u32 = gid.y * out_w + gid.x;
     if (out_idx < arrayLength(&out_mask)) {
         out_mask[out_idx] = packed;
+    }
+    if (out_idx < arrayLength(&inactive_avg)) {
+        if (inactive_cnt == 0u) {
+            inactive_avg[out_idx] = 0u;
+        } else {
+            let r: u32 = inactive_sum.x / inactive_cnt;
+            let g: u32 = inactive_sum.y / inactive_cnt;
+            let b: u32 = inactive_sum.z / inactive_cnt;
+            inactive_avg[out_idx] = (r & 0xFFu) | ((g & 0xFFu) << 8u) | ((b & 0xFFu) << 16u);
+        }
     }
 }

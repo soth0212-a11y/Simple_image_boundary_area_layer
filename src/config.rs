@@ -12,7 +12,6 @@ pub struct AppConfig {
     pub save_layer1: bool,
     pub save_layer2: bool,
     pub save_layer3: bool,
-    pub save_layer4: bool,
     pub log_timing: bool,
 }
 
@@ -26,7 +25,6 @@ impl Default for AppConfig {
             save_layer1: false,
             save_layer2: false,
             save_layer3: false,
-            save_layer4: false,
             log_timing: true,
         }
     }
@@ -87,7 +85,6 @@ fn parse_config(text: &str) -> AppConfig {
             "SAVE_LAYER1" => cfg.save_layer1 = parse_bool(value),
             "SAVE_LAYER2" => cfg.save_layer2 = parse_bool(value),
             "SAVE_LAYER3" => cfg.save_layer3 = parse_bool(value),
-            "SAVE_LAYER4" => cfg.save_layer4 = parse_bool(value),
             "LOG_TIMING" => cfg.log_timing = parse_bool(value),
             _ => {}
         }
@@ -123,7 +120,6 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     apply_env_bool("SAVE_LAYER1", &mut cfg.save_layer1);
     apply_env_bool("SAVE_LAYER2", &mut cfg.save_layer2);
     apply_env_bool("SAVE_LAYER3", &mut cfg.save_layer3);
-    apply_env_bool("SAVE_LAYER4", &mut cfg.save_layer4);
     apply_env_bool("LOG_TIMING", &mut cfg.log_timing);
 }
 
