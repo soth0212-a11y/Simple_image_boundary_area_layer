@@ -50,6 +50,39 @@ fn center_for(idx: u32) -> vec2<u32> {
     return vec2<u32>((x0 + x1) / 2u, (y0 + y1) / 2u);
 }
 
+fn iou_ge_10(i: u32, j: u32) -> bool {
+    let bi: u32 = i * 2u;
+    let bj: u32 = j * 2u;
+    let b0i: u32 = flat_boxes[bi];
+    let b1i: u32 = flat_boxes[bi + 1u];
+    let b0j: u32 = flat_boxes[bj];
+    let b1j: u32 = flat_boxes[bj + 1u];
+
+    let x0i: u32 = b0i & 0xFFFFu;
+    let y0i: u32 = b0i >> 16u;
+    let x1i: u32 = b1i & 0xFFFFu;
+    let y1i: u32 = b1i >> 16u;
+    let x0j: u32 = b0j & 0xFFFFu;
+    let y0j: u32 = b0j >> 16u;
+    let x1j: u32 = b1j & 0xFFFFu;
+    let y1j: u32 = b1j >> 16u;
+
+    if (x1i <= x0i || y1i <= y0i || x1j <= x0j || y1j <= y0j) { return false; }
+
+    let ix0: u32 = max(x0i, x0j);
+    let iy0: u32 = max(y0i, y0j);
+    let ix1: u32 = min(x1i, x1j);
+    let iy1: u32 = min(y1i, y1j);
+    if (ix1 <= ix0 || iy1 <= iy0) { return false; }
+
+    let inter: u32 = (ix1 - ix0) * (iy1 - iy0);
+    let area_i: u32 = (x1i - x0i) * (y1i - y0i);
+    let area_j: u32 = (x1j - x0j) * (y1j - y0j);
+    let union_area: u32 = area_i + area_j - inter;
+    if (union_area == 0u) { return false; }
+    return inter * 5u >= union_area;
+}
+
 @compute @workgroup_size(256, 1, 1)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx: u32 = gid.x;
@@ -96,7 +129,7 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
                 let dy_u: u32 = abs_i32(dy);
                 if (dx_u > R || dy_u > R) { continue; }
                 let dist2: u32 = dx_u * dx_u + dy_u * dy_u;
-                if (dist2 <= R2) {
+                if (dist2 <= R2 && iou_ge_10(idx, j)) {
                     let li: u32 = atomicLoad(&label[idx]);
                     let lj: u32 = atomicLoad(&label[j]);
                     let new_label: u32 = min(li, lj);
