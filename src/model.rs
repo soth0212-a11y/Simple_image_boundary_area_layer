@@ -7,6 +7,7 @@ use crate::config;
 use crate::preprocessing;
 use crate::visualization; // 시각화 모듈 사용
 use crate::l3_edge_gpu;
+use crate::l4_gpu;
 
 // ---- 상수 및 구조체 정의 ----
 #[repr(C)]
@@ -73,6 +74,36 @@ fn readback_u32_buffer(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::B
     let result = bytemuck::cast_slice::<u8, u32>(&data).to_vec();
     drop(data); staging.unmap();
     result
+}
+
+fn decode_bbox_pair(pair0: u32, pair1: u32) -> Option<(u32, u32, u32, u32)> {
+    let x0 = pair0 & 0xFFFFu32;
+    let y0 = pair0 >> 16u32;
+    let x1 = pair1 & 0xFFFFu32;
+    let y1 = pair1 >> 16u32;
+    if x1 < x0 || y1 < y0 {
+        return None;
+    }
+    Some((x0, y0, x1, y1))
+}
+
+fn iou_ge_tenths(a: (u32, u32, u32, u32), b: (u32, u32, u32, u32), tenths: u32) -> bool {
+    let (ax0, ay0, ax1, ay1) = a;
+    let (bx0, by0, bx1, by1) = b;
+    let inter_x0 = ax0.max(bx0);
+    let inter_y0 = ay0.max(by0);
+    let inter_x1 = ax1.min(bx1);
+    let inter_y1 = ay1.min(by1);
+    if inter_x1 < inter_x0 || inter_y1 < inter_y0 {
+        return false;
+    }
+    let iw = inter_x1 - inter_x0 + 1;
+    let ih = inter_y1 - inter_y0 + 1;
+    let inter = iw as u64 * ih as u64;
+    let area_a = (ax1 - ax0 + 1) as u64 * (ay1 - ay0 + 1) as u64;
+    let area_b = (bx1 - bx0 + 1) as u64 * (by1 - by0 + 1) as u64;
+    let union = area_a + area_b - inter;
+    inter * 10 >= union * (tenths as u64)
 }
 
 
@@ -388,10 +419,13 @@ pub fn model(
     l2_static: &layer2_static_values,
     l3_edge_pipelines: &l3_edge_gpu::L3EdgeGpuPipelines,
     l3_edge_buffers: &mut Option<l3_edge_gpu::L3EdgeGpuBuffers>,
+    l4_pipelines: &l4_gpu::L4ExpandPipelines,
+    l4_buffers: &mut Option<l4_gpu::L4ExpandBuffers>,
     src_path: &Path,
 ) {
     let total_start = Instant::now();
     let mut l3_edge_e = std::time::Duration::from_secs(0);
+    let mut l4_e = std::time::Duration::from_secs(0);
 
     // ---- Layer0 ----
     let l0_s = Instant::now();
@@ -435,7 +469,7 @@ pub fn model(
         pooled_cpu = Some(pooled);
     }
 
-    let need_l3_edge = config::get().save_layer3_edge || config::get().log_timing;
+    let need_l3_edge = config::get().save_layer3_edge || config::get().save_layer4 || config::get().log_timing;
     if need_l3_edge && l2_out.out_w >= 16 && l2_out.out_h >= 16 {
         let l3_edge_s = Instant::now();
         let aw = ((l2_out.out_w - 16) / 4) + 1;
@@ -460,8 +494,14 @@ pub fn model(
                 contents: bytemuck::cast_slice(&info_buf_data),
                 usage: wgpu::BufferUsages::STORAGE,
             });
+            let l4_info_buf_data = [height, width, 0u32, 0u32];
+            let l4_info_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("layer4_info"),
+                contents: bytemuck::cast_slice(&l4_info_buf_data),
+                usage: wgpu::BufferUsages::UNIFORM,
+            });
 
-            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l3_edge_enc") });
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("layer3_enc") });
             l3_edge_gpu::dispatch_l3_edge(
                 device,
                 &mut enc,
@@ -482,8 +522,167 @@ pub fn model(
             let block_slots = block_count * 40;
             let mut block_boxes: Vec<u32> = Vec::new();
             let mut block_valid: Vec<u32> = Vec::new();
+            let mut l4_expanded: Vec<u32> = Vec::new();
+            let mut l4_flags: Vec<u32> = Vec::new();
+            let mut l4_merged: Vec<(u32, u32, u32, u32)> = Vec::new();
 
-            if config::get().save_layer3_edge && block_slots > 0 {
+            let need_l4 = config::get().save_layer4 || config::get().log_timing;
+            if need_l4 && block_slots > 0 {
+                let l4_s = Instant::now();
+                let n = block_slots as u32;
+                let bin_size: u32 = 64;
+                let bin_w = (l2_out.out_w + bin_size - 1) / bin_size;
+                let bin_h = (l2_out.out_h + bin_size - 1) / bin_size;
+                let bin_count = bin_w.saturating_mul(bin_h).max(1);
+                let rebuild = l4_buffers
+                    .as_ref()
+                    .map(|b| b.n != n || b.bin_count != bin_count)
+                    .unwrap_or(true);
+                if rebuild {
+                    *l4_buffers = Some(l4_gpu::ensure_l4_expand_buffers(device, n, bin_count));
+                }
+                let l4_bufs = l4_buffers.as_ref().unwrap();
+
+                let params_data = [
+                    config::get().l4_ring_pct,
+                    config::get().l4_iou_tenths,
+                    config::get().l4_gap_max,
+                    config::get().l4_ov_pct,
+                ];
+                queue.write_buffer(&l4_bufs.params, 0, bytemuck::cast_slice(&params_data));
+
+                let l4_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("layer4_expand_bg"),
+                    layout: &l4_pipelines.expand_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry { binding: 0, resource: l4_info_buf.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 1, resource: l2_out.mask.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 2, resource: l3_edge_bufs.block_boxes.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 3, resource: l3_edge_bufs.block_valid.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 4, resource: l4_bufs.params.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 5, resource: l4_bufs.bin_counts.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 6, resource: l4_bufs.bin_items.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 7, resource: l4_bufs.expanded_boxes.as_entire_binding() },
+                        wgpu::BindGroupEntry { binding: 8, resource: l4_bufs.expanded_flags.as_entire_binding() },
+                    ],
+                });
+
+                let mut l4_enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("layer4_enc") });
+                {
+                    let mut pass = l4_enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("layer4_clear_bins"),
+                        timestamp_writes: None,
+                    });
+                    pass.set_pipeline(&l4_pipelines.clear_bins);
+                    pass.set_bind_group(0, &l4_bg, &[]);
+                    pass.dispatch_workgroups((bin_count + 255) / 256, 1, 1);
+                }
+                {
+                    let mut pass = l4_enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("layer4_insert_bins"),
+                        timestamp_writes: None,
+                    });
+                    pass.set_pipeline(&l4_pipelines.insert_bins);
+                    pass.set_bind_group(0, &l4_bg, &[]);
+                    pass.dispatch_workgroups((n + 255) / 256, 1, 1);
+                }
+                {
+                    let mut pass = l4_enc.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                        label: Some("layer4_expand_once"),
+                        timestamp_writes: None,
+                    });
+                    pass.set_pipeline(&l4_pipelines.expand);
+                    pass.set_bind_group(0, &l4_bg, &[]);
+                    pass.dispatch_workgroups((n + 255) / 256, 1, 1);
+                }
+                queue.submit([l4_enc.finish()]);
+
+                if config::get().save_layer4 {
+                    let boxes_bytes = (n as u64) * 2 * 4;
+                    let flags_bytes = (n as u64) * 4;
+                    l4_expanded = readback_u32_buffer(device, queue, &l4_bufs.expanded_boxes, boxes_bytes);
+                    l4_flags = readback_u32_buffer(device, queue, &l4_bufs.expanded_flags, flags_bytes);
+
+                    let mut valid_boxes: Vec<(u32, u32, u32, u32)> = Vec::new();
+                    for i in 0..(n as usize) {
+                        if i >= l4_flags.len() {
+                            break;
+                        }
+                        if (l4_flags[i] & (1u32 << 7u32)) == 0u32 {
+                            continue;
+                        }
+                        let bi = i * 2;
+                        if bi + 1 >= l4_expanded.len() {
+                            break;
+                        }
+                        if let Some(b) = decode_bbox_pair(l4_expanded[bi], l4_expanded[bi + 1]) {
+                            valid_boxes.push(b);
+                        }
+                    }
+
+                    if !valid_boxes.is_empty() {
+                        let mut dsu = DSU::new(valid_boxes.len());
+                        let tenths = config::get().l4_iou_tenths.max(1);
+                        for i in 0..valid_boxes.len() {
+                            for j in (i + 1)..valid_boxes.len() {
+                                if iou_ge_tenths(valid_boxes[i], valid_boxes[j], tenths) {
+                                    dsu.union(i, j);
+                                }
+                            }
+                        }
+
+                        let mut merged: Vec<(u32, u32, u32, u32)> = Vec::new();
+                        let mut root_map: std::collections::HashMap<usize, usize> = std::collections::HashMap::new();
+                        for (i, b) in valid_boxes.iter().enumerate() {
+                            let root = dsu.find(i);
+                            let entry = root_map.entry(root).or_insert_with(|| {
+                                merged.push(*b);
+                                merged.len() - 1
+                            });
+                            let cur = &mut merged[*entry];
+                            cur.0 = cur.0.min(b.0);
+                            cur.1 = cur.1.min(b.1);
+                            cur.2 = cur.2.max(b.2);
+                            cur.3 = cur.3.max(b.3);
+                        }
+
+                        merged.sort_by(|a, b| {
+                            let area_a = (a.2 - a.0 + 1) as u64 * (a.3 - a.1 + 1) as u64;
+                            let area_b = (b.2 - b.0 + 1) as u64 * (b.3 - b.1 + 1) as u64;
+                            area_b.cmp(&area_a)
+                                .then_with(|| a.1.cmp(&b.1))
+                                .then_with(|| a.0.cmp(&b.0))
+                        });
+                        l4_merged = merged;
+                    }
+
+                    if block_slots > 0 && block_boxes.is_empty() {
+                        let boxes_bytes = (block_slots * 2 * 4) as u64;
+                        block_boxes = readback_u32_buffer(device, queue, &l3_edge_bufs.block_boxes, boxes_bytes);
+                        let valid_bytes = (block_slots * 4) as u64;
+                        block_valid = readback_u32_buffer(device, queue, &l3_edge_bufs.block_valid, valid_bytes);
+                    }
+
+                    let _ = visualization::save_layer4_expanded_overlay(
+                        src_path,
+                        l2_out.out_w as usize,
+                        l2_out.out_h as usize,
+                        &block_boxes,
+                        &block_valid,
+                        &l4_expanded,
+                        &l4_flags,
+                    );
+                    let _ = visualization::save_layer4_merged_overlay(
+                        src_path,
+                        l2_out.out_w as usize,
+                        l2_out.out_h as usize,
+                        &l4_merged,
+                    );
+                }
+                l4_e = l4_s.elapsed();
+            }
+
+            if config::get().save_layer3_edge && block_slots > 0 && block_boxes.is_empty() {
                 let boxes_bytes = (block_slots * 2 * 4) as u64;
                 block_boxes = readback_u32_buffer(device, queue, &l3_edge_bufs.block_boxes, boxes_bytes);
                 let valid_bytes = (block_slots * 4) as u64;
@@ -499,7 +698,7 @@ pub fn model(
                     let anchor_score = readback_u32_buffer(device, queue, &l3_edge_bufs.anchor_score, anchor_score_bytes);
                     let anchor_meta = readback_u32_buffer(device, queue, &l3_edge_bufs.anchor_meta, anchor_score_bytes);
 
-                    let _ = visualization::save_layer3_edge_pass1_anchor_overlay(
+                    let _ = visualization::save_layer3_pass1_anchor_overlay(
                         src_path,
                         l2_out.out_w as usize,
                         l2_out.out_h as usize,
@@ -513,14 +712,14 @@ pub fn model(
 
                 if block_slots > 0 {
                     if let Some(ref pooled) = pooled_cpu {
-                        let _ = visualization::save_layer3_edge_block_overlay(
+                        let _ = visualization::save_layer3_pass2b_block_overlay(
                             src_path,
                             pooled,
                             l2_out.out_w as usize,
                             l2_out.out_h as usize,
                             &block_boxes,
                             &block_valid,
-                            "l3_edge",
+                            "layer3_pass2b",
                         );
                     }
                 }
@@ -553,6 +752,7 @@ pub fn model(
             l1_e,
             l2_e,
             l3_edge_e,
+            l4_e,
             total_start.elapsed(),
         );
     }

@@ -34,8 +34,8 @@ pub fn build_l3_edge_pipelines(
     pass2a_module: wgpu::ShaderModule,
     pass2b_module: wgpu::ShaderModule,
 ) -> L3EdgeGpuPipelines {
-    let pass1_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("l3_edge_pass1_layout"),
+    let layer3_pass1_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("layer3_pass1_layout"),
         entries: &[
             wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
@@ -46,23 +46,23 @@ pub fn build_l3_edge_pipelines(
         ],
     });
 
-    let pass1_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("l3_edge_pass1_pipeline_layout"),
-        bind_group_layouts: &[&pass1_layout],
+    let layer3_pass1_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("layer3_pass1_pipeline_layout"),
+        bind_group_layouts: &[&layer3_pass1_layout],
         push_constant_ranges: &[],
     });
 
     let pass1 = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("l3_edge_pass1_pipeline"),
-        layout: Some(&pass1_pipeline_layout),
+        label: Some("layer3_pass1_pipeline"),
+        layout: Some(&layer3_pass1_pipeline_layout),
         module: &pass1_module,
         entry_point: Some("main"),
         compilation_options: Default::default(),
         cache: None,
     });
 
-    let pass2a_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("l3_edge_pass2a_layout"),
+    let layer3_pass2a_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("layer3_pass2a_layout"),
         entries: &[
             wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
@@ -75,23 +75,23 @@ pub fn build_l3_edge_pipelines(
         ],
     });
 
-    let pass2a_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("l3_edge_pass2a_pipeline_layout"),
-        bind_group_layouts: &[&pass2a_layout],
+    let layer3_pass2a_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("layer3_pass2a_pipeline_layout"),
+        bind_group_layouts: &[&layer3_pass2a_layout],
         push_constant_ranges: &[],
     });
 
     let pass2a = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("l3_edge_pass2a_pipeline"),
-        layout: Some(&pass2a_pipeline_layout),
+        label: Some("layer3_pass2a_pipeline"),
+        layout: Some(&layer3_pass2a_pipeline_layout),
         module: &pass2a_module,
         entry_point: Some("main"),
         compilation_options: Default::default(),
         cache: None,
     });
 
-    let pass2b_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("l3_edge_pass2b_layout"),
+    let layer3_pass2b_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+        label: Some("layer3_pass2b_layout"),
         entries: &[
             wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
@@ -103,22 +103,22 @@ pub fn build_l3_edge_pipelines(
         ],
     });
 
-    let pass2b_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
-        label: Some("l3_edge_pass2b_pipeline_layout"),
-        bind_group_layouts: &[&pass2b_layout],
+    let layer3_pass2b_pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+        label: Some("layer3_pass2b_pipeline_layout"),
+        bind_group_layouts: &[&layer3_pass2b_layout],
         push_constant_ranges: &[],
     });
 
     let pass2b = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("l3_edge_pass2b_pipeline"),
-        layout: Some(&pass2b_pipeline_layout),
+        label: Some("layer3_pass2b_pipeline"),
+        layout: Some(&layer3_pass2b_pipeline_layout),
         module: &pass2b_module,
         entry_point: Some("main"),
         compilation_options: Default::default(),
         cache: None,
     });
 
-    L3EdgeGpuPipelines { pass1_layout, pass2a_layout, pass2b_layout, pass1, pass2a, pass2b }
+    L3EdgeGpuPipelines { pass1_layout: layer3_pass1_layout, pass2a_layout: layer3_pass2a_layout, pass2b_layout: layer3_pass2b_layout, pass1, pass2a, pass2b }
 }
 
 pub fn ensure_l3_edge_buffers(device: &wgpu::Device, aw: u32, ah: u32, bw: u32, bh: u32, bw2: u32, bh2: u32) -> L3EdgeGpuBuffers {
@@ -178,19 +178,19 @@ pub fn ensure_l3_edge_buffers(device: &wgpu::Device, aw: u32, ah: u32, bw: u32, 
     });
 
     let block_boxes = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("l3_edge_block_boxes"),
+        label: Some("layer3_pass2b_block_boxes"),
         size: block_boxes_bytes.max(4),
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
     let block_scores = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("l3_edge_block_scores"),
+        label: Some("layer3_pass2b_block_scores"),
         size: block_scores_bytes.max(4),
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
     let block_valid = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("l3_edge_block_valid"),
+        label: Some("layer3_pass2b_block_valid"),
         size: block_scores_bytes.max(4),
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
@@ -234,8 +234,8 @@ pub fn dispatch_l3_edge(
         return;
     }
 
-    let pass1_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("l3_edge_pass1_bg"),
+    let layer3_pass1_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("layer3_pass1_bg"),
         layout: &pipelines.pass1_layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: input_info.as_entire_binding() },
@@ -249,16 +249,16 @@ pub fn dispatch_l3_edge(
 
     {
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("l3_edge_pass1"),
+            label: Some("layer3_pass1"),
             timestamp_writes: None,
         });
         pass.set_pipeline(&pipelines.pass1);
-        pass.set_bind_group(0, &pass1_bg, &[]);
+        pass.set_bind_group(0, &layer3_pass1_bg, &[]);
         pass.dispatch_workgroups((aw + 7) / 8, (ah + 7) / 8, 1);
     }
 
-    let pass2a_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("l3_edge_pass2a_bg"),
+    let layer3_pass2a_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("layer3_pass2a_bg"),
         layout: &pipelines.pass2a_layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: input_info.as_entire_binding() },
@@ -274,16 +274,16 @@ pub fn dispatch_l3_edge(
 
     {
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("l3_edge_pass2a"),
+            label: Some("layer3_pass2a"),
             timestamp_writes: None,
         });
         pass.set_pipeline(&pipelines.pass2a);
-        pass.set_bind_group(0, &pass2a_bg, &[]);
+        pass.set_bind_group(0, &layer3_pass2a_bg, &[]);
         pass.dispatch_workgroups((bw + 7) / 8, (bh + 7) / 8, 1);
     }
 
-    let pass2b_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        label: Some("l3_edge_pass2b_bg"),
+    let layer3_pass2b_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
+        label: Some("layer3_pass2b_bg"),
         layout: &pipelines.pass2b_layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: input_info.as_entire_binding() },
@@ -298,11 +298,11 @@ pub fn dispatch_l3_edge(
 
     {
         let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
-            label: Some("l3_edge_pass2b"),
+            label: Some("layer3_pass2b"),
             timestamp_writes: None,
         });
         pass.set_pipeline(&pipelines.pass2b);
-        pass.set_bind_group(0, &pass2b_bg, &[]);
+        pass.set_bind_group(0, &layer3_pass2b_bg, &[]);
         pass.dispatch_workgroups((bw2 + 7) / 8, (bh2 + 7) / 8, 1);
     }
 }

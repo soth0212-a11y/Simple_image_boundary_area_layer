@@ -335,7 +335,7 @@ pub fn save_layer2_inactive_avg_overlay(
     Ok(())
 }
 
-pub fn save_layer3_edge_pass1_anchor_overlay(
+pub fn save_layer3_pass1_anchor_overlay(
     src_path: &Path,
     out_w: usize,
     out_h: usize,
@@ -388,11 +388,11 @@ pub fn save_layer3_edge_pass1_anchor_overlay(
     fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_edge_pass1_anchors_{}.png", stem, time)))?;
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer3_pass1_anchors_{}.png", stem, time)))?;
     Ok(())
 }
 
-pub fn save_layer3_edge_pass2_block_topk_overlay(
+pub fn save_layer3_pass2a_block_topk_overlay(
     src_path: &Path,
     out_w: usize,
     out_h: usize,
@@ -450,13 +450,13 @@ pub fn save_layer3_edge_pass2_block_topk_overlay(
     fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_edge_pass2_top5_{}.png", stem, time)))?;
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer3_pass2a_top10_{}.png", stem, time)))?;
     Ok(())
 }
 
-pub fn save_layer3_edge_block_overlay(
+pub fn save_layer3_pass2b_block_overlay(
     src_path: &Path,
-    pooled_mask: &[u32],
+    _pooled_mask: &[u32],
     out_w: usize,
     out_h: usize,
     block_boxes: &[u32],
@@ -471,25 +471,18 @@ pub fn save_layer3_edge_block_overlay(
         return Ok(());
     }
 
-    let mut img = image::RgbaImage::new(out_w as u32, out_h as u32);
-    let color_active = Rgba([200, 200, 200, 255]);
+    let mut img = image::open(src_path)?.to_rgba8();
+    let orig_w = img.width() as usize;
+    let orig_h = img.height() as usize;
+    if orig_w == 0 || orig_h == 0 {
+        return Ok(());
+    }
     let color_box = Rgba([0, 200, 255, 255]);
     let color_boundary = Rgba([255, 128, 0, 255]);
     const FLAG_TOUCH_N: u32 = 16u32;
     const FLAG_TOUCH_E: u32 = 32u32;
     const FLAG_TOUCH_S: u32 = 64u32;
     const FLAG_TOUCH_W: u32 = 128u32;
-
-    if pooled_mask.len() >= out_w * out_h {
-        for y in 0..out_h {
-            for x in 0..out_w {
-                let idx = y * out_w + x;
-                if (pooled_mask[idx] & (1u32 << 1u32)) != 0u32 {
-                    img.put_pixel(x as u32, y as u32, color_active);
-                }
-            }
-        }
-    }
 
     for idx in 0..slot_count {
         let flags = block_valid[idx];
@@ -506,10 +499,8 @@ pub fn save_layer3_edge_block_overlay(
         if x1 <= x0 || y1 <= y0 {
             continue;
         }
-        let sx0 = (x0 as usize).min(out_w - 1);
-        let sy0 = (y0 as usize).min(out_h - 1);
-        let sx1 = (x1.saturating_sub(1) as usize).min(out_w - 1);
-        let sy1 = (y1.saturating_sub(1) as usize).min(out_h - 1);
+        let (sx0, sx1) = span_box(x0, x1, out_w, orig_w);
+        let (sy0, sy1) = span_box(y0, y1, out_h, orig_h);
         let touched = (flags & (FLAG_TOUCH_N | FLAG_TOUCH_E | FLAG_TOUCH_S | FLAG_TOUCH_W)) != 0u32;
         let color = if touched { color_boundary } else { color_box };
         draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color);
@@ -518,7 +509,129 @@ pub fn save_layer3_edge_block_overlay(
     fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    img.save(Path::new(SAVE_DIR).join(format!("{}_l3_edge_block_{}_{}.png", stem, tag, time)))?;
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer3_pass2b_block_{}_{}.png", stem, tag, time)))?;
+    Ok(())
+}
+
+pub fn save_layer4_expanded_overlay(
+    src_path: &Path,
+    l2_w: usize,
+    l2_h: usize,
+    l3_boxes: &[u32],
+    l3_valid: &[u32],
+    expanded_boxes: &[u32],
+    expanded_flags: &[u32],
+) -> Result<(), image::ImageError> {
+    if l2_w == 0 || l2_h == 0 {
+        return Ok(());
+    }
+    if expanded_boxes.len() < 2 || expanded_flags.is_empty() {
+        return Ok(());
+    }
+    let mut img = image::open(src_path)?.to_rgba8();
+    let orig_w = img.width() as usize;
+    let orig_h = img.height() as usize;
+    if orig_w == 0 || orig_h == 0 {
+        return Ok(());
+    }
+
+    let color_l3 = Rgba([200, 200, 200, 255]);
+    let color_iou = Rgba([0, 200, 0, 255]);
+    let color_adj = Rgba([255, 128, 0, 255]);
+    let color_second = Rgba([0, 120, 255, 255]);
+
+    if l3_boxes.len() >= 2 && !l3_valid.is_empty() {
+        let count = l3_valid.len().min(l3_boxes.len() / 2);
+        for i in 0..count {
+            if (l3_valid[i] & 1u32) == 0u32 {
+                continue;
+            }
+            let bi = i * 2;
+            let b0 = l3_boxes[bi];
+            let b1 = l3_boxes[bi + 1];
+            let x0 = b0 & 0xFFFFu32;
+            let y0 = b0 >> 16u32;
+            let x1 = b1 & 0xFFFFu32;
+            let y1 = b1 >> 16u32;
+            if x1 <= x0 || y1 <= y0 {
+                continue;
+            }
+            let (sx0, sx1) = span_box(x0, x1.saturating_sub(1), l2_w, orig_w);
+            let (sy0, sy1) = span_box(y0, y1.saturating_sub(1), l2_h, orig_h);
+            draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color_l3);
+        }
+    }
+    for (i, flags) in expanded_flags.iter().enumerate() {
+        if (flags & (1u32 << 7u32)) == 0u32 {
+            continue;
+        }
+        let bi = i * 2;
+        if bi + 1 >= expanded_boxes.len() {
+            break;
+        }
+        let b0 = expanded_boxes[bi];
+        let b1 = expanded_boxes[bi + 1];
+        let x0 = b0 & 0xFFFFu32;
+        let y0 = b0 >> 16u32;
+        let x1 = b1 & 0xFFFFu32;
+        let y1 = b1 >> 16u32;
+        if x1 < x0 || y1 < y0 {
+            continue;
+        }
+        let (sx0, sx1) = span_box(x0, x1, l2_w, orig_w);
+        let (sy0, sy1) = span_box(y0, y1, l2_h, orig_h);
+        let expanded = (flags & 1u32) != 0u32;
+        let primary_iou = (flags & (1u32 << 5u32)) != 0u32;
+        let secondary_dir = (flags >> 3u32) & 3u32;
+        if expanded {
+            let color = if primary_iou { color_iou } else { color_adj };
+            draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color);
+            if secondary_dir != 3u32 {
+                draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color_second);
+            }
+        } else {
+            draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color_adj);
+        }
+    }
+
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer4_expanded_{}.png", stem, time)))?;
+    Ok(())
+}
+
+pub fn save_layer4_merged_overlay(
+    src_path: &Path,
+    l2_w: usize,
+    l2_h: usize,
+    merged: &[(u32, u32, u32, u32)],
+) -> Result<(), image::ImageError> {
+    if l2_w == 0 || l2_h == 0 {
+        return Ok(());
+    }
+    let mut img = image::open(src_path)?.to_rgba8();
+    let orig_w = img.width() as usize;
+    let orig_h = img.height() as usize;
+    if orig_w == 0 || orig_h == 0 {
+        return Ok(());
+    }
+
+    let color = Rgba([255, 0, 0, 255]);
+    for b in merged {
+        let (x0, y0, x1, y1) = *b;
+        if x1 < x0 || y1 < y0 {
+            continue;
+        }
+        let (sx0, sx1) = span_box(x0, x1, l2_w, orig_w);
+        let (sy0, sy1) = span_box(y0, y1, l2_h, orig_h);
+        draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color);
+    }
+
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer4_merged_{}.png", stem, time)))?;
     Ok(())
 }
 
@@ -531,6 +644,7 @@ pub fn log_timing_block(
     l1: std::time::Duration,
     l2: std::time::Duration,
     l3: std::time::Duration,
+    l4: std::time::Duration,
     total: std::time::Duration,
 ) {
     static LOG_WRITER: OnceLock<Mutex<BufWriter<std::fs::File>>> = OnceLock::new();
@@ -546,7 +660,8 @@ pub fn log_timing_block(
         writeln!(w, "layer1: {:?}", l1).ok();
         writeln!(w, "layer2: {:?}", l2).ok();
         writeln!(w, "layer3_edge: {:?}", l3).ok();
-        writeln!(w, "total: {:?}", total).ok();
+        writeln!(w, "layer4: {:?}", l4).ok();
+        writeln!(w, "total: {:?}\n", total).ok();
         w.flush().ok();
     }
 }
