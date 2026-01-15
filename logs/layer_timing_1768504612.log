@@ -1,0 +1,27 @@
+image: degleex-ganzorig-wQImoykAwGs-unsplash (3456x5184)
+layer0: 21.748489ms
+layer1: 28.903891ms
+layer2: 9.334794ms
+layer3: 1.833873ms
+layer4: 1.71534ms
+layer5: 116.297116ms
+total: 201.908626ms
+
+image: marita-kavelashvili-ugnrXk1129g-unsplash (4288x2848)
+layer0: 14.220917ms
+layer1: 20.552694ms
+layer2: 5.165467ms
+layer3: 1.27304ms
+layer4: 933.222µs
+layer5: 67.179236ms
+total: 123.840146ms
+
+image: sebastian-unrau-sp-p7uuT0tw-unsplash (6000x4000)
+layer0: 28.97217ms
+layer1: 41.190157ms
+layer2: 10.69576ms
+layer3: 1.936305ms
+layer4: 2.111684ms
+layer5: 134.627658ms
+total: 243.11292ms
+

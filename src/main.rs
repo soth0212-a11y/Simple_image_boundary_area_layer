@@ -1,17 +1,19 @@
 use std::fs;
-use std::time::Instant;
 
 mod config;
 mod gpu;
 mod visualization;
 mod model;
 mod preprocessing;
-mod l3_edge_gpu;
+mod l3_gpu;
 mod l4_gpu;
+mod l5;
+#[cfg(test)]
+mod l3;
 
 fn main() -> std::io::Result<()> {
     env_logger::init();
-    let (device, adapter, queue) = pollster::block_on(gpu::gpu_init());
+    let (device, _adapter, queue) = pollster::block_on(gpu::gpu_init());
     
 
     let l0_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer0.wgsl"));
@@ -20,15 +22,15 @@ fn main() -> std::io::Result<()> {
     let l1_values = model::layer1_init(&device, l1_shader);
     let l2_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2.wgsl"));
     let l2_values = model::layer2_init(&device, l2_shader);
-    let layer3_pass1_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer3_edge_pass1.wgsl"));
-    let layer3_pass2a_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer3_edge_pass2a.wgsl"));
-    let layer3_pass2b_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer3_edge_pass2b.wgsl"));
-    let l3_edge_pipelines = l3_edge_gpu::build_l3_edge_pipelines(&device, layer3_pass1_shader, layer3_pass2a_shader, layer3_pass2b_shader);
-    let mut l3_edge_buffers: Option<l3_edge_gpu::L3EdgeGpuBuffers> = None;
-    let layer4_expand_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer4_expand_once.wgsl"));
-    let l4_pipelines = l4_gpu::build_l4_expand_pipelines(&device, layer4_expand_shader);
-    let mut l4_buffers: Option<l4_gpu::L4ExpandBuffers> = None;
-
+    let l3_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer3_stride2_conn8.wgsl"));
+    let l3_pipelines = l3_gpu::build_l3_pipelines(&device, l3_shader);
+    let mut l3_buffers: Option<l3_gpu::L3Buffers> = None;
+    let l4_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer4_channels.wgsl"));
+    let l4_pipelines = l4_gpu::build_l4_channels_pipelines(&device, l4_shader);
+    let mut l4_buffers: Option<l4_gpu::L4ChannelsBuffers> = None;
+    let l5_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer5_merge_bboxes.wgsl"));
+    let l5_pipelines = l5::build_l5_pipelines(&device, l5_shader);
+    let mut l5_buffers: Option<l5::L5Buffers> = None;
     let cfg = config::init();
     let images_dir = match cfg.images_dir.clone() {
         Some(v) => v,
@@ -47,7 +49,6 @@ fn main() -> std::io::Result<()> {
             Ok(v) => v,
             Err(_e) => return Ok(()),
         };
-        let start = Instant::now();
         model::model(
             &device,
             &queue,
@@ -55,13 +56,14 @@ fn main() -> std::io::Result<()> {
             img_info,
             [&l0_values, &l1_values],
             &l2_values,
-            &l3_edge_pipelines,
-            &mut l3_edge_buffers,
+            &l3_pipelines,
+            &mut l3_buffers,
             &l4_pipelines,
             &mut l4_buffers,
+            &l5_pipelines,
+            &mut l5_buffers,
             &path,
         );
-        let _duration = start.elapsed();
         return Ok(());
     }
 
@@ -81,7 +83,6 @@ fn main() -> std::io::Result<()> {
                             }
                         };           
                         // print!("height : {}, width : {}", img_info.height, img_info.width);
-                        let start = Instant::now(); // start time record
                         model::model(
                             &device,
                             &queue,
@@ -89,14 +90,14 @@ fn main() -> std::io::Result<()> {
                             img_info,
                             [&l0_values, &l1_values],
                             &l2_values,
-                            &l3_edge_pipelines,
-                            &mut l3_edge_buffers,
+                            &l3_pipelines,
+                            &mut l3_buffers,
                             &l4_pipelines,
                             &mut l4_buffers,
+                            &l5_pipelines,
+                            &mut l5_buffers,
                             &path,
                         );
-                        let _ = start.elapsed(); // time check
-                        // println!("without image load total run time : {:?} \n", duration);
                         processed += 1;
                         if processed >= max_images {
                             break;

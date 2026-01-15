@@ -11,13 +11,13 @@ pub struct AppConfig {
     pub save_layer0: bool,
     pub save_layer1: bool,
     pub save_layer2: bool,
-    pub save_layer3_edge: bool,
-    pub save_layer4: bool,
-    pub l4_ring_pct: u32,
-    pub l4_iou_tenths: u32,
-    pub l4_gap_max: u32,
-    pub l4_ov_pct: u32,
+    pub save_layer3: bool,
+    pub log_layer3: bool,
     pub log_timing: bool,
+    pub save_layer4: bool,
+    pub save_layer5_labels: bool,
+    pub save_layer5_accum: bool,
+    pub save_layer5_merged: bool,
 }
 
 impl Default for AppConfig {
@@ -29,13 +29,13 @@ impl Default for AppConfig {
             save_layer0: false,
             save_layer1: false,
             save_layer2: false,
-            save_layer3_edge: false,
+            save_layer3: false,
+            log_layer3: false,
+            log_timing: false,
             save_layer4: false,
-            l4_ring_pct: 33,
-            l4_iou_tenths: 7,
-            l4_gap_max: 2,
-            l4_ov_pct: 30,
-            log_timing: true,
+            save_layer5_labels: false,
+            save_layer5_accum: false,
+            save_layer5_merged: false,
         }
     }
 }
@@ -94,29 +94,13 @@ fn parse_config(text: &str) -> AppConfig {
             "SAVE_LAYER0" => cfg.save_layer0 = parse_bool(value),
             "SAVE_LAYER1" => cfg.save_layer1 = parse_bool(value),
             "SAVE_LAYER2" => cfg.save_layer2 = parse_bool(value),
-            "SAVE_LAYER3_EDGE" => cfg.save_layer3_edge = parse_bool(value),
-            "SAVE_LAYER4" => cfg.save_layer4 = parse_bool(value),
-            "L4_RING_PCT" => {
-                if let Ok(v) = value.parse::<u32>() {
-                    cfg.l4_ring_pct = v;
-                }
-            }
-            "L4_IOU_TENTHS" => {
-                if let Ok(v) = value.parse::<u32>() {
-                    cfg.l4_iou_tenths = v;
-                }
-            }
-            "L4_GAP_MAX" => {
-                if let Ok(v) = value.parse::<u32>() {
-                    cfg.l4_gap_max = v;
-                }
-            }
-            "L4_OV_PCT" => {
-                if let Ok(v) = value.parse::<u32>() {
-                    cfg.l4_ov_pct = v;
-                }
-            }
+            "SAVE_LAYER3" => cfg.save_layer3 = parse_bool(value),
+            "LOG_LAYER3" => cfg.log_layer3 = parse_bool(value),
             "LOG_TIMING" => cfg.log_timing = parse_bool(value),
+            "SAVE_LAYER4" => cfg.save_layer4 = parse_bool(value),
+            "SAVE_L5_LABELS" => cfg.save_layer5_labels = parse_bool(value),
+            "SAVE_L5_ACCUM" => cfg.save_layer5_accum = parse_bool(value),
+            "SAVE_L5_MERGED" => cfg.save_layer5_merged = parse_bool(value),
             _ => {}
         }
     }
@@ -150,30 +134,14 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     apply_env_bool("SAVE_LAYER0", &mut cfg.save_layer0);
     apply_env_bool("SAVE_LAYER1", &mut cfg.save_layer1);
     apply_env_bool("SAVE_LAYER2", &mut cfg.save_layer2);
-    apply_env_bool("SAVE_LAYER3_EDGE", &mut cfg.save_layer3_edge);
-    apply_env_bool("SAVE_LAYER4", &mut cfg.save_layer4);
+    apply_env_bool("SAVE_LAYER3", &mut cfg.save_layer3);
+    apply_env_bool("LOG_LAYER3", &mut cfg.log_layer3);
     apply_env_bool("LOG_TIMING", &mut cfg.log_timing);
+    apply_env_bool("SAVE_LAYER4", &mut cfg.save_layer4);
+    apply_env_bool("SAVE_L5_LABELS", &mut cfg.save_layer5_labels);
+    apply_env_bool("SAVE_L5_ACCUM", &mut cfg.save_layer5_accum);
+    apply_env_bool("SAVE_L5_MERGED", &mut cfg.save_layer5_merged);
 
-    if let Ok(v) = env::var("L4_RING_PCT") {
-        if let Ok(parsed) = v.parse::<u32>() {
-            cfg.l4_ring_pct = parsed;
-        }
-    }
-    if let Ok(v) = env::var("L4_IOU_TENTHS") {
-        if let Ok(parsed) = v.parse::<u32>() {
-            cfg.l4_iou_tenths = parsed;
-        }
-    }
-    if let Ok(v) = env::var("L4_GAP_MAX") {
-        if let Ok(parsed) = v.parse::<u32>() {
-            cfg.l4_gap_max = parsed;
-        }
-    }
-    if let Ok(v) = env::var("L4_OV_PCT") {
-        if let Ok(parsed) = v.parse::<u32>() {
-            cfg.l4_ov_pct = parsed;
-        }
-    }
 }
 
 fn apply_env_bool(name: &str, target: &mut bool) {
