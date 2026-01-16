@@ -5,40 +5,17 @@ mod gpu;
 mod visualization;
 mod model;
 mod preprocessing;
-mod l1_gpu;
-mod l2_edges_gpu;
-mod l3_gpu;
-mod l4_gpu;
-mod l5;
-#[cfg(test)]
-mod l3;
+mod l1_bbox_gpu;
 
 fn main() -> std::io::Result<()> {
     env_logger::init();
     let (device, _adapter, queue) = pollster::block_on(gpu::gpu_init());
-    
 
     let l0_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer0.wgsl"));
     let l0_values = model::layer0_init(&device, l0_shader);
-    let l1_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer1_plane_label.wgsl"));
-    let l1_pipelines = l1_gpu::build_l1_pipelines(&device, l1_shader);
-    let mut l1_buffers: Option<l1_gpu::L1Buffers> = None;
-    let l2_boundary_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_boundary.wgsl"));
-    let l2_label_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_edge_label.wgsl"));
-    let l2_bbox_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_bbox.wgsl"));
-    let l2_edges_pipelines = l2_edges_gpu::build_l2_edges_pipelines(&device, l2_boundary_shader, l2_label_shader, l2_bbox_shader);
-    let mut l2_edges_buffers: Option<l2_edges_gpu::L2EdgesBuffers> = None;
-    let l2_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2.wgsl"));
-    let l2_values = model::layer2_init(&device, l2_shader);
-    let l3_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer3_stride2_conn8.wgsl"));
-    let l3_pipelines = l3_gpu::build_l3_pipelines(&device, l3_shader);
-    let mut l3_buffers: Option<l3_gpu::L3Buffers> = None;
-    let l4_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer4_channels.wgsl"));
-    let l4_pipelines = l4_gpu::build_l4_channels_pipelines(&device, l4_shader);
-    let mut l4_buffers: Option<l4_gpu::L4ChannelsBuffers> = None;
-    let l5_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer5_threshold_refine.wgsl"));
-    let l5_pipelines = l5::build_l5_pipelines(&device, l5_shader);
-    let mut l5_buffers: Option<l5::L5Buffers> = None;
+    let l1_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer1_bbox.wgsl"));
+    let l1_pipelines = l1_bbox_gpu::build_l1_bbox_pipelines(&device, l1_shader);
+    let mut l1_buffers: Option<l1_bbox_gpu::L1BboxBuffers> = None;
     let cfg = config::init();
     let images_dir = match cfg.images_dir.clone() {
         Some(v) => v,
@@ -65,15 +42,6 @@ fn main() -> std::io::Result<()> {
             &l0_values,
             &l1_pipelines,
             &mut l1_buffers,
-            &l2_edges_pipelines,
-            &mut l2_edges_buffers,
-            &l2_values,
-            &l3_pipelines,
-            &mut l3_buffers,
-            &l4_pipelines,
-            &mut l4_buffers,
-            &l5_pipelines,
-            &mut l5_buffers,
             &path,
         );
         return Ok(());
@@ -90,11 +58,9 @@ fn main() -> std::io::Result<()> {
                         let (img_buffer, img_info) = match preprocessing::open_img_as_texture(&path, &device, &queue) {
                             Ok(v) => v,
                             Err(_) => {
-                                // eprintln!("skip {:?}: {}", path, e);
-                                continue; //if get a error skip
+                                continue;
                             }
-                        };           
-                        // print!("height : {}, width : {}", img_info.height, img_info.width);
+                        };
                         model::model(
                             &device,
                             &queue,
@@ -103,15 +69,6 @@ fn main() -> std::io::Result<()> {
                             &l0_values,
                             &l1_pipelines,
                             &mut l1_buffers,
-                            &l2_edges_pipelines,
-                            &mut l2_edges_buffers,
-                            &l2_values,
-                            &l3_pipelines,
-                            &mut l3_buffers,
-                            &l4_pipelines,
-                            &mut l4_buffers,
-                            &l5_pipelines,
-                            &mut l5_buffers,
                             &path,
                         );
                         processed += 1;

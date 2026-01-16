@@ -5,35 +5,8 @@ use wgpu::util::DeviceExt;
 
 use crate::config;
 use crate::preprocessing;
-use crate::visualization; // 시각화 모듈 사용
-use crate::l1_gpu;
-use crate::l2_edges_gpu;
-use crate::l3_gpu;
-use crate::l4_gpu;
-use crate::l5;
-
-// ---- 상수 및 구조체 정의 ----
-#[repr(C)]
-#[derive(Clone, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct EdgeDirCounts {
-    pub top_left: i32, pub top_center: i32, pub top_right: i32,
-    pub center_left: i32, pub center_right: i32,
-    pub bottom_left: i32, pub bottom_center: i32, pub bottom_right: i32,
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct PackedDirs { pub a: u32, pub b: u32 }
-
-#[repr(C)]
-#[derive(Clone, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Layer1Out { pub dir_flags: u32 }
-
-pub struct Layer2Outputs {
-    pub mask: wgpu::Buffer,
-    pub out_w: u32,
-    pub out_h: u32,
-}
+use crate::visualization;
+use crate::l1_bbox_gpu;
 
 pub struct Layer0Outputs {
     pub packed: wgpu::Buffer,
@@ -42,23 +15,11 @@ pub struct Layer0Outputs {
     pub s_active: wgpu::Buffer,
 }
 
-#[repr(C)]
-#[derive(Clone, Copy, Default, bytemuck::Pod, bytemuck::Zeroable)]
-pub struct Vec4i32 { pub x0: i32, pub y0: i32, pub x1: i32, pub y1: i32 }
-
-
-
 pub struct layer_static_values {
     pub bindgroup_layout: wgpu::BindGroupLayout,
     pub compute_pipeline: wgpu::ComputePipeline,
 }
 
-pub struct layer2_static_values {
-    pub bindgroup_layout: wgpu::BindGroupLayout,
-    pub compute_pipeline: wgpu::ComputePipeline,
-}
-
-// ---- 유틸리티 함수 ----
 fn readback_u32_buffer(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::Buffer, byte_len: u64) -> Vec<u32> {
     let staging = device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("readback staging"),
@@ -76,34 +37,10 @@ fn readback_u32_buffer(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::B
     rx.recv().unwrap().unwrap();
     let data = slice.get_mapped_range();
     let result = bytemuck::cast_slice::<u8, u32>(&data).to_vec();
-    drop(data); staging.unmap();
-    result
-}
-
-fn readback_i32_buffer(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::Buffer, byte_len: u64) -> Vec<i32> {
-    let staging = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("readback staging i32"),
-        size: byte_len,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
-        mapped_at_creation: false,
-    });
-    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-    encoder.copy_buffer_to_buffer(src, 0, &staging, 0, byte_len);
-    queue.submit([encoder.finish()]);
-    let slice = staging.slice(..);
-    let (tx, rx) = std::sync::mpsc::channel();
-    slice.map_async(wgpu::MapMode::Read, move |res| tx.send(res).unwrap());
-    let _ = device.poll(wgpu::PollType::Wait);
-    rx.recv().unwrap().unwrap();
-    let data = slice.get_mapped_range();
-    let result = bytemuck::cast_slice::<u8, i32>(&data).to_vec();
     drop(data);
     staging.unmap();
     result
 }
-
-
-// ---- 파이프라인 초기화 (모든 레이어) ----
 
 pub fn layer0_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> layer_static_values {
     let bindgroup_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
@@ -122,35 +59,18 @@ pub fn layer0_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> 
     layer_static_values { bindgroup_layout, compute_pipeline }
 }
 
-pub fn layer2_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> layer2_static_values {
-    let bindgroup_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-        label: Some("l2_layout"),
-        entries: &[
-            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-        ][..],
-    });
-    let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&bindgroup_layout], push_constant_ranges: &[][..] });
-    let compute_pipeline = device.create_compute_pipeline(&wgpu::ComputePipelineDescriptor {
-        label: Some("l2_pipeline"),
-        layout: Some(&pipeline_layout),
-        module: &shader_module,
-        entry_point: Some("main"),
-        compilation_options: Default::default(),
-        cache: None,
-    });
-    layer2_static_values { bindgroup_layout, compute_pipeline }
-}
-
-// ---- 레이어 실행 함수 ----
-
-pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::TextureView, img_info: preprocessing::Imginfo, static_vals: &layer_static_values) -> (Layer0Outputs, [u32; 4]) {
+pub fn layer0(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    img_view: &wgpu::TextureView,
+    img_info: preprocessing::Imginfo,
+    static_vals: &layer_static_values,
+) -> (Layer0Outputs, [u32; 4]) {
     let info = [img_info.height, img_info.width, img_info.height, img_info.width];
     let grid_w = img_info.width;
     let grid_h = img_info.height;
-    let out_w = (grid_w + 1) / 2;
-    let out_h = (grid_h + 1) / 2;
+    let out_w = grid_w;
+    let out_h = grid_h;
     let out_size = (out_w * out_h).max(1) as u64 * 8;
     let out_packed = device.create_buffer(&wgpu::BufferDescriptor { label: Some("layer0_out_packed"), size: out_size, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
     let cell_size = (out_w * out_h).max(1) as u64 * 4;
@@ -183,7 +103,7 @@ pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::Textu
         cfg.l0_pixel_min_dirs,
     ];
     let info_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: bytemuck::cast_slice(&info_buf_data), usage: wgpu::BufferUsages::STORAGE });
-    
+
     let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &static_vals.bindgroup_layout,
         entries: &[
@@ -208,425 +128,30 @@ pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::Textu
     (Layer0Outputs { packed: out_packed, cell_rgb, edge4, s_active }, info)
 }
 
-
-pub fn layer2(
-    device: &wgpu::Device,
-    queue: &wgpu::Queue,
-    l0: &Layer0Outputs,
-    img_info: [u32; 4],
-    static_vals: &layer2_static_values,
-) -> Layer2Outputs {
-    const KERNEL: u32 = 2;
-    const STRIDE: u32 = 1;
-
-    let height = img_info[0];
-    let width = img_info[1];
-    if width == 0 || height == 0 {
-        return Layer2Outputs {
-            mask: device.create_buffer(&wgpu::BufferDescriptor {
-                label: Some("l2_pool_mask_empty"),
-                size: 4,
-                usage: wgpu::BufferUsages::STORAGE,
-                mapped_at_creation: false,
-            }),
-            out_w: 0,
-            out_h: 0,
-        };
-    }
-
-    let l1_w = (width + 1) / 2;
-    let l1_h = (height + 1) / 2;
-    let (out_w, out_h) = if l1_w < 2 || l1_h < 2 {
-        (1u32, 1u32)
-    } else {
-        let ow = ((l1_w + STRIDE - 1 - KERNEL) / STRIDE) + 1;
-        let oh = ((l1_h + STRIDE - 1 - KERNEL) / STRIDE) + 1;
-        (ow.max(1), oh.max(1))
-    };
-
-    let info = [height, width];
-    let info_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("l2_info"),
-        contents: bytemuck::cast_slice(&info),
-        usage: wgpu::BufferUsages::STORAGE,
-    });
-
-    let out_len = (out_w * out_h) as u64;
-    let out_size = out_len * 4;
-    let pooled_mask = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("l2_pool_mask"),
-        size: out_size,
-        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
-        mapped_at_creation: false,
-    });
-    let zero = vec![0u8; out_size as usize];
-    queue.write_buffer(&pooled_mask, 0, &zero);
-
-    let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
-        layout: &static_vals.bindgroup_layout,
-        entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: info_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 1, resource: l0.packed.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: pooled_mask.as_entire_binding() },
-        ][..],
-        label: Some("l2_pool_bg"),
-    });
-
-    let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_pool_enc") });
-    {
-        let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_pool_pass"), timestamp_writes: None });
-        pass.set_pipeline(&static_vals.compute_pipeline);
-        pass.set_bind_group(0, &bg, &[][..]);
-        pass.dispatch_workgroups((out_w + 15) / 16, (out_h + 15) / 16, 1);
-    }
-    queue.submit([enc.finish()]);
-
-    Layer2Outputs {
-        mask: pooled_mask,
-        out_w,
-        out_h,
-    }
-}
-
-// ---- 메인 모델 조정 함수 ----
-
 pub fn model(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
     img_view: wgpu::TextureView,
     img_info: preprocessing::Imginfo,
     l0_static: &layer_static_values,
-    l1_pipelines: &l1_gpu::L1Pipelines,
-    l1_buffers: &mut Option<l1_gpu::L1Buffers>,
-    l2_edges_pipelines: &l2_edges_gpu::L2EdgesPipelines,
-    l2_edges_buffers: &mut Option<l2_edges_gpu::L2EdgesBuffers>,
-    l2_static: &layer2_static_values,
-    l3_pipelines: &l3_gpu::L3Pipelines,
-    l3_buffers: &mut Option<l3_gpu::L3Buffers>,
-    l4_pipelines: &l4_gpu::L4ChannelsPipelines,
-    l4_buffers: &mut Option<l4_gpu::L4ChannelsBuffers>,
-    l5_pipelines: &l5::L5Pipelines,
-    l5_buffers: &mut Option<l5::L5Buffers>,
+    l1_pipelines: &l1_bbox_gpu::L1BboxPipelines,
+    l1_buffers: &mut Option<l1_bbox_gpu::L1BboxBuffers>,
     src_path: &Path,
 ) {
     let total_start = Instant::now();
-    let mut l3_dur = Duration::from_secs(0);
-    let mut l4_dur = Duration::from_secs(0);
-    let mut l5_dur = Duration::from_secs(0);
 
-    // ---- Layer0 ----
     let l0_start = Instant::now();
     let (l0_out, info) = layer0(device, queue, &img_view, img_info, l0_static);
     device.poll(wgpu::PollType::Wait);
     let l0_dur = l0_start.elapsed();
-    let mut l1_dur = Duration::from_secs(0);
 
-    let height = info[0];
     let width = info[1];
-    let l1_w = (width + 1) / 2;
-    let l1_h = (height + 1) / 2;
-    if l1_w > 0 && l1_h > 0 {
-        let rebuild = l1_buffers
-            .as_ref()
-            .map(|b| b.w != l1_w || b.h != l1_h)
-            .unwrap_or(true);
-        if rebuild {
-            *l1_buffers = Some(l1_gpu::ensure_l1_buffers(device, l1_w, l1_h));
-        }
-        let l1_bufs = l1_buffers.as_ref().unwrap();
-        let cfg = config::get();
-        let th = cfg.l0_edge_th_r.max(cfg.l0_edge_th_g).max(cfg.l0_edge_th_b);
-        let iters = l1_gpu::default_iters(l1_w, l1_h, cfg.l1_iter);
-        let l1_start = Instant::now();
-        let final_in_a = l1_gpu::dispatch_l1(
-            device,
-            queue,
-            l1_pipelines,
-            l1_bufs,
-            &l0_out.cell_rgb,
-            &l0_out.s_active,
-            &l0_out.edge4,
-            th,
-            iters,
-        );
-        device.poll(wgpu::PollType::Wait);
-        l1_dur = l1_start.elapsed();
-
-        let plane_buf_local = if final_in_a { &l1_bufs.plane_a } else { &l1_bufs.plane_b };
-        if cfg.save_layer1 {
-            let cell_size = (l1_w * l1_h) as u64 * 4;
-            let plane = readback_u32_buffer(device, queue, plane_buf_local, cell_size);
-            let edge4 = readback_u32_buffer(device, queue, &l1_bufs.edge4_out, cell_size);
-            let _ = visualization::save_l1_plane_id_overlay(
-                src_path,
-                &plane,
-                l1_w as usize,
-                l1_h as usize,
-            );
-            let _ = visualization::save_l1_plane_boundaries_on_src(
-                src_path,
-                &plane,
-                l1_w as usize,
-                l1_h as usize,
-            );
-            let _ = visualization::save_l1_edge4_overlay(
-                src_path,
-                &edge4,
-                l1_w as usize,
-                l1_h as usize,
-            );
-            let _ = visualization::save_l1_plane_plus_edges(
-                src_path,
-                &plane,
-                &edge4,
-                l1_w as usize,
-                l1_h as usize,
-            );
-        }
-        let max_boxes = cfg.l2_max_boxes.max(1).min(l1_w * l1_h).max(1);
-        let rebuild = l2_edges_buffers
-            .as_ref()
-            .map(|b| b.w != l1_w || b.h != l1_h || b.max_boxes != max_boxes)
-            .unwrap_or(true);
-        if rebuild {
-            *l2_edges_buffers = Some(l2_edges_gpu::ensure_l2_edges_buffers(device, l1_w, l1_h, max_boxes));
-        }
-        let l2_edges_bufs = l2_edges_buffers.as_ref().unwrap();
-        let l2_iters = l2_edges_gpu::default_iters(l1_w, l1_h, cfg.l2_iter);
-        let final_in_a = l2_edges_gpu::dispatch_l2_edges(
-            device,
-            queue,
-            l2_edges_pipelines,
-            l2_edges_bufs,
-            plane_buf_local,
-            &l1_bufs.edge4_out,
-            l2_iters,
-            cfg.l2_edge_cell_th,
-            cfg.l2_area_th,
-        );
-        device.poll(wgpu::PollType::Wait);
-
-        if cfg.save_l2_boundary || cfg.save_l2_labels || cfg.save_l2_bboxes {
-            let cell_size = (l1_w * l1_h) as u64 * 4;
-            if cfg.save_l2_boundary {
-                let boundary = readback_u32_buffer(device, queue, &l2_edges_bufs.boundary4, cell_size);
-                let _ = visualization::save_l2_boundary4_overlay(
-                    src_path,
-                    &boundary,
-                    l1_w as usize,
-                    l1_h as usize,
-                );
-            }
-            if cfg.save_l2_labels {
-                let label_buf = if final_in_a { &l2_edges_bufs.label_a } else { &l2_edges_bufs.label_b };
-                let labels = readback_u32_buffer(device, queue, label_buf, cell_size);
-                let _ = visualization::save_l2_edge_label_overlay(
-                    src_path,
-                    &labels,
-                    l1_w as usize,
-                    l1_h as usize,
-                );
-            }
-            if cfg.save_l2_bboxes {
-                let box_count = readback_u32_buffer(device, queue, &l2_edges_bufs.box_count, 4);
-                let count = box_count.get(0).copied().unwrap_or(0);
-                let boxes_raw = readback_i32_buffer(device, queue, &l2_edges_bufs.boxes_out, (max_boxes as u64) * 16);
-                let boxes: Vec<Vec4i32> = boxes_raw
-                    .chunks_exact(4)
-                    .map(|c| Vec4i32 { x0: c[0], y0: c[1], x1: c[2], y1: c[3] })
-                    .collect();
-                let _ = visualization::save_l2_bbox_on_src(
-                    src_path,
-                    &boxes,
-                    count,
-                    l1_w as usize,
-                    l1_h as usize,
-                );
-            }
-        }
-    }
-
-    let l2_start = Instant::now();
-    let l2_out = layer2(device, queue, &l0_out, info, l2_static);
-    device.poll(wgpu::PollType::Wait);
-    let l2_dur = l2_start.elapsed();
-
-    if config::get().save_layer2 && l2_out.out_w > 0 && l2_out.out_h > 0 {
-        let out_size = (l2_out.out_w * l2_out.out_h) as u64 * 4;
-        let pooled = readback_u32_buffer(device, queue, &l2_out.mask, out_size);
-        let _ = visualization::save_layer2_overlay(
-            src_path,
-            &pooled,
-            l2_out.out_w as usize,
-            l2_out.out_h as usize,
-            width as usize,
-            height as usize,
-            "layer2",
-        );
-    }
-
-    if l2_out.out_w > 0 && l2_out.out_h > 0 {
-        let l3_in_w = l2_out.out_w;
-        let l3_in_h = l2_out.out_h;
-        let l3_out_w = (l3_in_w + 1) / 2;
-        let l3_out_h = (l3_in_h + 1) / 2;
-        let rebuild = l3_buffers
-            .as_ref()
-            .map(|b| b.in_w != l3_in_w || b.in_h != l3_in_h || b.out_w != l3_out_w || b.out_h != l3_out_h)
-            .unwrap_or(true);
-        if rebuild {
-            *l3_buffers = Some(l3_gpu::ensure_l3_buffers(device, l3_in_w, l3_in_h, l3_out_w, l3_out_h));
-        }
-        let l3_bufs = l3_buffers.as_ref().unwrap();
-        let l3_start = Instant::now();
-        l3_gpu::dispatch_l3(device, queue, l3_pipelines, l3_bufs, &l2_out.mask);
-        device.poll(wgpu::PollType::Wait);
-        l3_dur = l3_start.elapsed();
-
-        if l3_out_w > 0 && l3_out_h > 0 {
-            let l3_size = (l3_out_w * l3_out_h) as u64 * 4;
-            let need_l3 = config::get().save_layer3 || config::get().log_layer3;
-            if need_l3 {
-                let s_active = readback_u32_buffer(device, queue, &l3_bufs.s_active, l3_size);
-                let conn8 = readback_u32_buffer(device, queue, &l3_bufs.conn8, l3_size);
-                if config::get().save_layer3 {
-                    let _ = visualization::save_layer3_s_active_overlay(
-                        src_path,
-                        &s_active,
-                        l3_out_w as usize,
-                        l3_out_h as usize,
-                        "l3",
-                    );
-                    let _ = visualization::save_layer3_conn8_overlay(
-                        src_path,
-                        &conn8,
-                        l3_out_w as usize,
-                        l3_out_h as usize,
-                        "l3",
-                    );
-                }
-                if config::get().log_layer3 {
-                    let _ = visualization::log_layer3_conn8(
-                        src_path,
-                        &conn8,
-                        l3_out_w as usize,
-                        l3_out_h as usize,
-                    );
-                }
-            }
-
-            let rebuild = l4_buffers
-                .as_ref()
-                .map(|b| b.w != l3_out_w || b.h != l3_out_h)
-                .unwrap_or(true);
-            if rebuild {
-                *l4_buffers = Some(l4_gpu::ensure_l4_channels_buffers(device, l3_out_w, l3_out_h));
-            }
-            let l4_bufs = l4_buffers.as_ref().unwrap();
-            let l4_start = Instant::now();
-            l4_gpu::dispatch_l4_channels(device, queue, l4_pipelines, l4_bufs, &l3_bufs.s_active, &l3_bufs.conn8);
-            device.poll(wgpu::PollType::Wait);
-            l4_dur = l4_start.elapsed();
-
-            if config::get().save_layer4 {
-                let bbox0 = readback_u32_buffer(device, queue, &l4_bufs.bbox0, l3_size);
-                let bbox1 = readback_u32_buffer(device, queue, &l4_bufs.bbox1, l3_size);
-                let meta = readback_u32_buffer(device, queue, &l4_bufs.meta, l3_size);
-                let _ = visualization::save_layer4_expand_mask(
-                    src_path,
-                    &meta,
-                    l3_out_w as usize,
-                    l3_out_h as usize,
-                    "l4",
-                );
-                let _ = visualization::save_layer4_bbox_overlay(
-                    src_path,
-                    &bbox0,
-                    &bbox1,
-                    &meta,
-                    l3_out_w as usize,
-                    l3_out_h as usize,
-                    "l4",
-                );
-                let _ = visualization::log_layer4_packed(
-                    src_path,
-                    &bbox0,
-                    &bbox1,
-                    &meta,
-                    l3_out_w as usize,
-                    l3_out_h as usize,
-                );
-            }
-
-            let l5_rebuild = l5_buffers
-                .as_ref()
-                .map(|b| b.w != l3_out_w || b.h != l3_out_h)
-                .unwrap_or(true);
-            if l5_rebuild {
-                *l5_buffers = Some(l5::ensure_l5_buffers(device, l3_out_w, l3_out_h));
-            }
-            let l5_bufs = l5_buffers.as_ref().unwrap();
-            let threshold = l5::default_threshold();
-            let iterations = l5::default_iters(l3_out_w, l3_out_h);
-            let l5_start = Instant::now();
-            let final_is_a = l5::dispatch_l5(
-                device,
-                queue,
-                l5_pipelines,
-                l5_bufs,
-                &l3_bufs.s_active,
-                &l3_bufs.conn8,
-                threshold,
-                iterations,
-            );
-            device.poll(wgpu::PollType::Wait);
-            l5_dur = l5_start.elapsed();
-
-            if config::get().save_l5_debug {
-                let tile_bytes = (l5_bufs.tile_w * l5_bufs.tile_h) as u64 * 4;
-                let cell_bytes = (l5_bufs.w * l5_bufs.h) as u64 * 4;
-                let score = readback_u32_buffer(device, queue, &l5_bufs.score_map, tile_bytes);
-                let keep = readback_u32_buffer(device, queue, &l5_bufs.tile_keep, tile_bytes);
-                let roi = readback_u32_buffer(device, queue, &l5_bufs.roi_mask, cell_bytes);
-                let label_buf = if final_is_a { &l5_bufs.label_a } else { &l5_bufs.label_b };
-                let labels = readback_u32_buffer(device, queue, label_buf, cell_bytes);
-                let _ = visualization::save_l5_score_map(
-                    src_path,
-                    &score,
-                    l5_bufs.tile_w as usize,
-                    l5_bufs.tile_h as usize,
-                    "l5",
-                );
-                let _ = visualization::save_l5_tile_keep(
-                    src_path,
-                    &keep,
-                    l5_bufs.tile_w as usize,
-                    l5_bufs.tile_h as usize,
-                    "l5",
-                );
-                let _ = visualization::save_l5_roi_mask(
-                    src_path,
-                    &roi,
-                    l5_bufs.w as usize,
-                    l5_bufs.h as usize,
-                    "l5",
-                );
-                let _ = visualization::save_l5_label_map(
-                    src_path,
-                    &labels,
-                    l5_bufs.w as usize,
-                    l5_bufs.h as usize,
-                    "l5",
-                );
-            }
-        }
-    }
-
-    let grid3_w = width;
-    let grid3_h = height;
+    let height = info[0];
+    let grid_w = width;
+    let grid_h = height;
     if config::get().save_layer0 {
-        let out_w = (grid3_w + 1) / 2;
-        let out_h = (grid3_h + 1) / 2;
+        let out_w = grid_w;
+        let out_h = grid_h;
         let l0_bytes = (out_w * out_h) as u64 * 8;
         let packed = readback_u32_buffer(device, queue, &l0_out.packed, l0_bytes);
         let _ = visualization::save_layer0_packed_rgb(
@@ -638,16 +163,62 @@ pub fn model(
         );
     }
 
+    let cfg = config::get();
+    let rebuild = l1_buffers
+        .as_ref()
+        .map(|b| b.w != grid_w || b.h != grid_h)
+        .unwrap_or(true);
+    if rebuild {
+        *l1_buffers = Some(l1_bbox_gpu::ensure_l1_bbox_buffers(device, grid_w, grid_h));
+    }
+    let l1_bufs = l1_buffers.as_ref().unwrap();
+    l1_bbox_gpu::dispatch_l1_bbox(
+        device,
+        queue,
+        l1_pipelines,
+        l1_bufs,
+        &l0_out.s_active,
+        &l0_out.packed,
+        cfg.l1_enable_stride2,
+    );
+    device.poll(wgpu::PollType::Wait);
+
+    if cfg.save_l1_bbox {
+        let cell_bytes = (grid_w * grid_h) as u64 * 4;
+        let bbox0 = readback_u32_buffer(device, queue, &l1_bufs.bbox0_s1, cell_bytes);
+        let bbox1 = readback_u32_buffer(device, queue, &l1_bufs.bbox1_s1, cell_bytes);
+        let colors = readback_u32_buffer(device, queue, &l1_bufs.color_s1, cell_bytes);
+        let _ = visualization::save_l1_bbox_on_src(
+            src_path,
+            &bbox0,
+            &bbox1,
+            &colors,
+            grid_w as usize,
+            grid_h as usize,
+            "s1",
+        );
+    }
+    if cfg.l1_enable_stride2 && cfg.save_l1_bbox_stride2 {
+        let s2_bytes = (l1_bufs.stride2_w * l1_bufs.stride2_h) as u64 * 4;
+        let bbox0 = readback_u32_buffer(device, queue, &l1_bufs.bbox0_s2, s2_bytes);
+        let bbox1 = readback_u32_buffer(device, queue, &l1_bufs.bbox1_s2, s2_bytes);
+        let colors = readback_u32_buffer(device, queue, &l1_bufs.color_s2, s2_bytes);
+        let _ = visualization::save_l1_bbox_on_src(
+            src_path,
+            &bbox0,
+            &bbox1,
+            &colors,
+            l1_bufs.stride2_w as usize,
+            l1_bufs.stride2_h as usize,
+            "s2",
+        );
+    }
+
     if config::get().log_timing {
         visualization::log_timing_layers(
             src_path,
             info,
             l0_dur,
-            l1_dur,
-            l2_dur,
-            l3_dur,
-            l4_dur,
-            l5_dur,
             total_start.elapsed(),
         );
     }

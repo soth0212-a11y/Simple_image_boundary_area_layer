@@ -16,6 +16,13 @@ fn quantize_rgb565(c: vec3<i32>) -> vec3<i32> {
     return vec3<i32>((r << 3), (g << 2), (b << 3));
 }
 
+fn pack_rgb565(r: u32, g: u32, b: u32) -> u32 {
+    let r5 = (r >> 3) & 31u;
+    let g6 = (g >> 2) & 63u;
+    let b5 = (b >> 3) & 31u;
+    return (r5 << 11u) | (g6 << 5u) | b5;
+}
+
 fn load_rgb(x: i32, y: i32, width: u32, height: u32) -> vec3<i32> {
     if (width == 0u || height == 0u) {
         return vec3<i32>(0, 0, 0);
@@ -60,14 +67,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         pixel_min_dirs = clamp(p, 1u, 8u);
     }
 
-    let out_w: u32 = (width + 1u) / 2u;
-    let out_h: u32 = (height + 1u) / 2u;
+    let out_w: u32 = width;
+    let out_h: u32 = height;
     let ox: u32 = gid.x;
     let oy: u32 = gid.y;
     if (ox >= out_w || oy >= out_h) { return; }
 
-    let base_x: u32 = ox * 2u;
-    let base_y: u32 = oy * 2u;
+    let base_x: u32 = ox;
+    let base_y: u32 = oy;
     var active_cnt: u32 = 0u;
     var inactive_cnt: u32 = 0u;
     var sum_r_act: u32 = 0u;
@@ -78,10 +85,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     var sum_b_in: u32 = 0u;
     var dir_or: u32 = 0u;
 
-    for (var dy: u32 = 0u; dy < 2u; dy = dy + 1u) {
+    for (var dy: u32 = 0u; dy < 1u; dy = dy + 1u) {
         let y: u32 = base_y + dy;
         if (y >= height) { continue; }
-        for (var dx: u32 = 0u; dx < 2u; dx = dx + 1u) {
+        for (var dx: u32 = 0u; dx < 1u; dx = dx + 1u) {
             let x: u32 = base_x + dx;
             if (x >= width) { continue; }
             let c: vec3<i32> = load_rgb(i32(x), i32(y), width, height);
@@ -139,7 +146,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let avg_g: u32 = select(sum_g_in, sum_g_act, block_active) / denom;
     let avg_b: u32 = select(sum_b_in, sum_b_act, block_active) / denom;
     let dir8: u32 = select(0u, dir_or, block_active) & 0xFFu;
-    let out0: u32 = select(0u, 1u, block_active) | (dir8 << 1u);
+    let q565: u32 = pack_rgb565(avg_r, avg_g, avg_b);
+    let out0: u32 = select(0u, 1u, block_active) | (dir8 << 1u) | (q565 << 9u);
     let out1: u32 = (avg_r & 0xFFu) | ((avg_g & 0xFFu) << 8u) | ((avg_b & 0xFFu) << 16u);
     let edge4: u32 = ((dir8 >> 0u) & 1u) |
                      (((dir8 >> 2u) & 1u) << 1u) |
