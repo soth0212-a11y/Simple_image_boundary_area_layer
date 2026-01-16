@@ -9,6 +9,13 @@ const EDGE_TH_R: i32 = 15;
 const EDGE_TH_G: i32 = 15;
 const EDGE_TH_B: i32 = 20;
 
+fn quantize_rgb565(c: vec3<i32>) -> vec3<i32> {
+    let r = (c.x >> 3) & 31;
+    let g = (c.y >> 2) & 63;
+    let b = (c.z >> 3) & 31;
+    return vec3<i32>((r << 3), (g << 2), (b << 3));
+}
+
 fn load_rgb(x: i32, y: i32, width: u32, height: u32) -> vec3<i32> {
     if (width == 0u || height == 0u) {
         return vec3<i32>(0, 0, 0);
@@ -16,7 +23,8 @@ fn load_rgb(x: i32, y: i32, width: u32, height: u32) -> vec3<i32> {
     let cx = clamp(x, 0, i32(width) - 1);
     let cy = clamp(y, 0, i32(height) - 1);
     let p = textureLoad(input_tex, vec2<i32>(cx, cy), 0);
-    return vec3<i32>(i32(p.x), i32(p.y), i32(p.z));
+    let c = vec3<i32>(i32(p.x), i32(p.y), i32(p.z));
+    return quantize_rgb565(c);
 }
 
 // 0 N, 1 NE, 2 E, 3 SE, 4 S, 5 SW, 6 W, 7 NW
