@@ -11,8 +11,7 @@ struct Params0 {
 @group(0) @binding(3) var<storage, read> plane_id_in: array<u32>;
 @group(0) @binding(4) var<storage, read_write> plane_id_out: array<u32>;
 @group(0) @binding(5) var<storage, read_write> edge4_out: array<u32>;
-@group(0) @binding(6) var<storage, read_write> stop4_out: array<u32>;
-@group(0) @binding(7) var<uniform> params0: Params0;
+@group(0) @binding(6) var<uniform> params0: Params0;
 
 const UINT_MAX: u32 = 0xFFFFFFFFu;
 
@@ -59,26 +58,6 @@ fn l1_init(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     if (idx < arrayLength(&edge4_out)) { edge4_out[idx] = edge; }
 
-    var stop: u32 = 0u;
-    if (y > 0u && (edge & 1u) != 0u) {
-        let nidx = idx2(x, y - 1u, w);
-        if (sameplane(idx, nidx)) { stop = stop | 1u; }
-    }
-    if (x + 1u < w && (edge & 2u) != 0u) {
-        let nidx = idx2(x + 1u, y, w);
-        if (sameplane(idx, nidx)) { stop = stop | 2u; }
-    }
-    if (y + 1u < h && (edge & 4u) != 0u) {
-        let nidx = idx2(x, y + 1u, w);
-        if (sameplane(idx, nidx)) { stop = stop | 4u; }
-    }
-    if (x > 0u && (edge & 8u) != 0u) {
-        let nidx = idx2(x - 1u, y, w);
-        if (sameplane(idx, nidx)) { stop = stop | 8u; }
-    }
-    if (idx < arrayLength(&stop4_out)) {
-        stop4_out[idx] = stop;
-    }
 }
 
 @compute @workgroup_size(16, 16, 1)

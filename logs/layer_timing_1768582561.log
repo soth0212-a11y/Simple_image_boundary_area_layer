@@ -1,0 +1,450 @@
+image: 000000147328 (640x480)
+layer0: 1.393307ms
+layer1: 21.749518ms
+layer2: 303.219µs
+layer3: 217.098µs
+layer4: 324.048µs
+layer5: 3.867295ms
+total: 47.694857ms
+
+image: 000000414738 (640x573)
+layer0: 1.363201ms
+layer1: 9.02797ms
+layer2: 317.647µs
+layer3: 277.04µs
+layer4: 242.926µs
+layer5: 4.196834ms
+total: 31.011667ms
+
+image: 000000281563 (500x332)
+layer0: 337.605µs
+layer1: 5.65333ms
+layer2: 155.182µs
+layer3: 116.99µs
+layer4: 127.98µs
+layer5: 3.232512ms
+total: 20.30799ms
+
+image: 000000063879 (640x365)
+layer0: 422.684µs
+layer1: 6.57412ms
+layer2: 156.985µs
+layer3: 118.342µs
+layer4: 201.94µs
+layer5: 3.009463ms
+total: 21.836982ms
+
+image: 000000531349 (640x640)
+layer0: 1.326662ms
+layer1: 10.053456ms
+layer2: 309.942µs
+layer3: 147.687µs
+layer4: 277.522µs
+layer5: 3.90225ms
+total: 35.882076ms
+
+image: 000000340329 (640x480)
+layer0: 784.754µs
+layer1: 7.870124ms
+layer2: 267.923µs
+layer3: 171.813µs
+layer4: 236.755µs
+layer5: 3.675134ms
+total: 28.413486ms
+
+image: 000000182236 (640x480)
+layer0: 705.355µs
+layer1: 7.994197ms
+layer2: 344.807µs
+layer3: 128.611µs
+layer4: 237.947µs
+layer5: 4.199008ms
+total: 28.462789ms
+
+image: 000000326820 (548x640)
+layer0: 1.220472ms
+layer1: 8.997803ms
+layer2: 321.264µs
+layer3: 206.738µs
+layer4: 282.14µs
+layer5: 4.41291ms
+total: 33.000462ms
+
+image: 000000149364 (640x410)
+layer0: 945.586µs
+layer1: 7.353033ms
+layer2: 339.188µs
+layer3: 171.021µs
+layer4: 218.581µs
+layer5: 3.560819ms
+total: 28.630344ms
+
+image: 000000166598 (480x640)
+layer0: 848.113µs
+layer1: 7.71344ms
+layer2: 194.496µs
+layer3: 266.58µs
+layer4: 224.351µs
+layer5: 3.594532ms
+total: 26.443164ms
+
+image: 000000424792 (640x487)
+layer0: 1.22978ms
+layer1: 8.025586ms
+layer2: 272.461µs
+layer3: 116.88µs
+layer4: 184.056µs
+layer5: 3.631762ms
+total: 25.500323ms
+
+image: 000000178388 (640x480)
+layer0: 456.939µs
+layer1: 7.861589ms
+layer2: 276.259µs
+layer3: 158.889µs
+layer4: 260.329µs
+layer5: 3.632985ms
+total: 26.830522ms
+
+image: 000000568154 (427x640)
+layer0: 801.035µs
+layer1: 7.23949ms
+layer2: 171.803µs
+layer3: 268.484µs
+layer4: 222.759µs
+layer5: 3.785071ms
+total: 27.339108ms
+
+image: 000000268150 (640x480)
+layer0: 1.034533ms
+layer1: 7.914007ms
+layer2: 262.202µs
+layer3: 281.098µs
+layer4: 230.012µs
+layer5: 5.552481ms
+total: 30.149607ms
+
+image: 000000138473 (427x640)
+layer0: 943.182µs
+layer1: 7.039564ms
+layer2: 341.913µs
+layer3: 188.083µs
+layer4: 260.82µs
+layer5: 3.660977ms
+total: 26.955437ms
+
+image: 000000382699 (500x375)
+layer0: 755.069µs
+layer1: 5.708994ms
+layer2: 165.411µs
+layer3: 250µs
+layer4: 218.861µs
+layer5: 2.913844ms
+total: 21.189726ms
+
+image: 000000493952 (640x427)
+layer0: 999.298µs
+layer1: 7.455055ms
+layer2: 258.756µs
+layer3: 127.058µs
+layer4: 241.383µs
+layer5: 3.822932ms
+total: 29.222907ms
+
+image: 000000348522 (640x426)
+layer0: 1.046917ms
+layer1: 7.547769ms
+layer2: 234.851µs
+layer3: 241.193µs
+layer4: 229.481µs
+layer5: 3.409655ms
+total: 25.690962ms
+
+image: 000000066862 (640x480)
+layer0: 433.043µs
+layer1: 7.822224ms
+layer2: 400.913µs
+layer3: 116.008µs
+layer4: 240.953µs
+layer5: 3.437107ms
+total: 25.13078ms
+
+image: 000000024457 (640x429)
+layer0: 1.211897ms
+layer1: 7.498015ms
+layer2: 173.736µs
+layer3: 214.423µs
+layer4: 220.124µs
+layer5: 3.578001ms
+total: 25.453826ms
+
+image: 000000160437 (640x480)
+layer0: 1.133399ms
+layer1: 7.982886ms
+layer2: 263.525µs
+layer3: 115.848µs
+layer4: 314.341µs
+layer5: 3.883535ms
+total: 31.098971ms
+
+image: 000000487414 (640x425)
+layer0: 1.073116ms
+layer1: 7.447791ms
+layer2: 256.682µs
+layer3: 158.979µs
+layer4: 440.658µs
+layer5: 3.490928ms
+total: 30.489626ms
+
+image: 000000329541 (480x640)
+layer0: 1.149529ms
+layer1: 7.599105ms
+layer2: 194.185µs
+layer3: 149.541µs
+layer4: 241.133µs
+layer5: 3.640999ms
+total: 26.533975ms
+
+image: 000000092064 (640x427)
+layer0: 1.018984ms
+layer1: 8.098854ms
+layer2: 496.513µs
+layer3: 323.708µs
+layer4: 429.266µs
+layer5: 4.904985ms
+total: 34.953251ms
+
+image: 000000281262 (640x478)
+layer0: 1.17658ms
+layer1: 8.074518ms
+layer2: 292.83µs
+layer3: 142.558µs
+layer4: 247.405µs
+layer5: 3.722553ms
+total: 29.47517ms
+
+image: 000000145337 (640x480)
+layer0: 1.047147ms
+layer1: 9.338162ms
+layer2: 393.069µs
+layer3: 207.109µs
+layer4: 350.539µs
+layer5: 3.788817ms
+total: 33.658088ms
+
+image: 000000372147 (427x640)
+layer0: 1.031949ms
+layer1: 8.813267ms
+layer2: 427.002µs
+layer3: 224.251µs
+layer4: 517.552µs
+layer5: 4.276463ms
+total: 37.008492ms
+
+image: 000000559184 (640x597)
+layer0: 1.244298ms
+layer1: 11.089893ms
+layer2: 361.689µs
+layer3: 193.623µs
+layer4: 548.931µs
+layer5: 4.396228ms
+total: 38.064786ms
+
+image: 000000511141 (640x426)
+layer0: 1.195676ms
+layer1: 8.733096ms
+layer2: 474.942µs
+layer3: 262.844µs
+layer4: 404.871µs
+layer5: 4.348158ms
+total: 38.73239ms
+
+image: 000000228974 (640x425)
+layer0: 1.119713ms
+layer1: 11.480397ms
+layer2: 856.699µs
+layer3: 322.736µs
+layer4: 463.871µs
+layer5: 4.841034ms
+total: 46.500132ms
+
+image: 000000092658 (426x640)
+layer0: 1.266288ms
+layer1: 8.808627ms
+layer2: 454.855µs
+layer3: 197.401µs
+layer4: 394.391µs
+layer5: 4.410916ms
+total: 37.097509ms
+
+image: 000000528299 (640x480)
+layer0: 1.387807ms
+layer1: 11.05622ms
+layer2: 521.7µs
+layer3: 329.619µs
+layer4: 539.634µs
+layer5: 4.428309ms
+total: 48.055164ms
+
+image: 000000494811 (640x360)
+layer0: 999.878µs
+layer1: 8.964641ms
+layer2: 516.149µs
+layer3: 263.355µs
+layer4: 363.893µs
+layer5: 4.12521ms
+total: 37.271155ms
+
+image: 000000063873 (640x551)
+layer0: 1.547327ms
+layer1: 13.428186ms
+layer2: 544.703µs
+layer3: 312.096µs
+layer4: 457.8µs
+layer5: 5.633753ms
+total: 55.262764ms
+
+image: 000000156073 (640x480)
+layer0: 1.386534ms
+layer1: 11.436905ms
+layer2: 509.828µs
+layer3: 705.916µs
+layer4: 433.594µs
+layer5: 4.536191ms
+total: 47.008547ms
+
+image: 000000406342 (425x640)
+layer0: 918.465µs
+layer1: 11.260473ms
+layer2: 557.798µs
+layer3: 242.696µs
+layer4: 394.041µs
+layer5: 4.490816ms
+total: 42.247925ms
+
+image: 000000126288 (481x640)
+layer0: 1.270637ms
+layer1: 12.560184ms
+layer2: 1.030146ms
+layer3: 464.954µs
+layer4: 505.851µs
+layer5: 5.198656ms
+total: 57.377637ms
+
+image: 000000550547 (640x480)
+layer0: 1.165489ms
+layer1: 12.926864ms
+layer2: 482.346µs
+layer3: 259.878µs
+layer4: 421.392µs
+layer5: 5.147179ms
+total: 48.756631ms
+
+image: 000000420414 (640x480)
+layer0: 1.414788ms
+layer1: 12.401818ms
+layer2: 445.417µs
+layer3: 252.043µs
+layer4: 490.13µs
+layer5: 6.024257ms
+total: 48.852732ms
+
+image: 000000240755 (640x480)
+layer0: 1.285264ms
+layer1: 15.594896ms
+layer2: 527.03µs
+layer3: 318.809µs
+layer4: 499.969µs
+layer5: 5.441853ms
+total: 49.249498ms
+
+image: 000000218357 (480x640)
+layer0: 1.827373ms
+layer1: 11.422658ms
+layer2: 253.887µs
+layer3: 176.702µs
+layer4: 279.234µs
+layer5: 3.573774ms
+total: 32.596333ms
+
+image: 000000209073 (480x640)
+layer0: 607.011µs
+layer1: 8.339747ms
+layer2: 307.768µs
+layer3: 173.797µs
+layer4: 301.376µs
+layer5: 4.522085ms
+total: 31.99245ms
+
+image: 000000250607 (480x640)
+layer0: 1.030005ms
+layer1: 8.062365ms
+layer2: 274.005µs
+layer3: 136.286µs
+layer4: 289.725µs
+layer5: 3.926025ms
+total: 31.122305ms
+
+image: 000000327818 (640x427)
+layer0: 1.192881ms
+layer1: 7.834567ms
+layer2: 219.993µs
+layer3: 184.046µs
+layer4: 262.193µs
+layer5: 3.67856ms
+total: 28.716866ms
+
+image: 000000175111 (640x478)
+layer0: 972.337µs
+layer1: 8.035375ms
+layer2: 320.482µs
+layer3: 189.556µs
+layer4: 257.223µs
+layer5: 3.660877ms
+total: 28.869453ms
+
+image: 000000242755 (464x640)
+layer0: 508.144µs
+layer1: 8.353232ms
+layer2: 331.423µs
+layer3: 196.169µs
+layer4: 310.423µs
+layer5: 3.93962ms
+total: 28.336211ms
+
+image: 000000236173 (450x350)
+layer0: 944.554µs
+layer1: 5.848587ms
+layer2: 211.928µs
+layer3: 279.205µs
+layer4: 403.047µs
+layer5: 3.50852ms
+total: 27.478329ms
+
+image: 000000460918 (364x640)
+layer0: 1.553448ms
+layer1: 9.6082ms
+layer2: 1.286827ms
+layer3: 534.895µs
+layer4: 973.108µs
+layer5: 5.823049ms
+total: 53.703635ms
+
+image: 000000029716 (480x640)
+layer0: 1.464451ms
+layer1: 15.432671ms
+layer2: 3.442287ms
+layer3: 498.567µs
+layer4: 1.251581ms
+layer5: 7.426291ms
+total: 74.557059ms
+
+image: 000000572289 (640x427)
+layer0: 3.149627ms
+layer1: 19.028346ms
+layer2: 1.16582ms
+layer3: 453.883µs
+layer4: 581.492µs
+layer5: 8.4427ms
+total: 72.948357ms
+

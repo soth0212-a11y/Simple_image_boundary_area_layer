@@ -7,6 +7,7 @@ use crate::config;
 use crate::preprocessing;
 use crate::visualization; // 시각화 모듈 사용
 use crate::l1_gpu;
+use crate::l2_edges_gpu;
 use crate::l3_gpu;
 use crate::l4_gpu;
 use crate::l5;
@@ -76,6 +77,28 @@ fn readback_u32_buffer(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::B
     let data = slice.get_mapped_range();
     let result = bytemuck::cast_slice::<u8, u32>(&data).to_vec();
     drop(data); staging.unmap();
+    result
+}
+
+fn readback_i32_buffer(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::Buffer, byte_len: u64) -> Vec<i32> {
+    let staging = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("readback staging i32"),
+        size: byte_len,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        mapped_at_creation: false,
+    });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    encoder.copy_buffer_to_buffer(src, 0, &staging, 0, byte_len);
+    queue.submit([encoder.finish()]);
+    let slice = staging.slice(..);
+    let (tx, rx) = std::sync::mpsc::channel();
+    slice.map_async(wgpu::MapMode::Read, move |res| tx.send(res).unwrap());
+    let _ = device.poll(wgpu::PollType::Wait);
+    rx.recv().unwrap().unwrap();
+    let data = slice.get_mapped_range();
+    let result = bytemuck::cast_slice::<u8, i32>(&data).to_vec();
+    drop(data);
+    staging.unmap();
     result
 }
 
@@ -275,6 +298,8 @@ pub fn model(
     l0_static: &layer_static_values,
     l1_pipelines: &l1_gpu::L1Pipelines,
     l1_buffers: &mut Option<l1_gpu::L1Buffers>,
+    l2_edges_pipelines: &l2_edges_gpu::L2EdgesPipelines,
+    l2_edges_buffers: &mut Option<l2_edges_gpu::L2EdgesBuffers>,
     l2_static: &layer2_static_values,
     l3_pipelines: &l3_gpu::L3Pipelines,
     l3_buffers: &mut Option<l3_gpu::L3Buffers>,
@@ -327,12 +352,11 @@ pub fn model(
         device.poll(wgpu::PollType::Wait);
         l1_dur = l1_start.elapsed();
 
+        let plane_buf_local = if final_in_a { &l1_bufs.plane_a } else { &l1_bufs.plane_b };
         if cfg.save_layer1 {
             let cell_size = (l1_w * l1_h) as u64 * 4;
-            let plane_buf = if final_in_a { &l1_bufs.plane_a } else { &l1_bufs.plane_b };
-            let plane = readback_u32_buffer(device, queue, plane_buf, cell_size);
+            let plane = readback_u32_buffer(device, queue, plane_buf_local, cell_size);
             let edge4 = readback_u32_buffer(device, queue, &l1_bufs.edge4_out, cell_size);
-            let stop4 = readback_u32_buffer(device, queue, &l1_bufs.stop4_out, cell_size);
             let _ = visualization::save_l1_plane_id_overlay(
                 src_path,
                 &plane,
@@ -351,20 +375,74 @@ pub fn model(
                 l1_w as usize,
                 l1_h as usize,
             );
-            let _ = visualization::save_l1_stop4_overlay(
-                src_path,
-                &stop4,
-                l1_w as usize,
-                l1_h as usize,
-            );
             let _ = visualization::save_l1_plane_plus_edges(
                 src_path,
                 &plane,
                 &edge4,
-                &stop4,
                 l1_w as usize,
                 l1_h as usize,
             );
+        }
+        let max_boxes = cfg.l2_max_boxes.max(1).min(l1_w * l1_h).max(1);
+        let rebuild = l2_edges_buffers
+            .as_ref()
+            .map(|b| b.w != l1_w || b.h != l1_h || b.max_boxes != max_boxes)
+            .unwrap_or(true);
+        if rebuild {
+            *l2_edges_buffers = Some(l2_edges_gpu::ensure_l2_edges_buffers(device, l1_w, l1_h, max_boxes));
+        }
+        let l2_edges_bufs = l2_edges_buffers.as_ref().unwrap();
+        let l2_iters = l2_edges_gpu::default_iters(l1_w, l1_h, cfg.l2_iter);
+        let final_in_a = l2_edges_gpu::dispatch_l2_edges(
+            device,
+            queue,
+            l2_edges_pipelines,
+            l2_edges_bufs,
+            plane_buf_local,
+            &l1_bufs.edge4_out,
+            l2_iters,
+            cfg.l2_edge_cell_th,
+            cfg.l2_area_th,
+        );
+        device.poll(wgpu::PollType::Wait);
+
+        if cfg.save_l2_boundary || cfg.save_l2_labels || cfg.save_l2_bboxes {
+            let cell_size = (l1_w * l1_h) as u64 * 4;
+            if cfg.save_l2_boundary {
+                let boundary = readback_u32_buffer(device, queue, &l2_edges_bufs.boundary4, cell_size);
+                let _ = visualization::save_l2_boundary4_overlay(
+                    src_path,
+                    &boundary,
+                    l1_w as usize,
+                    l1_h as usize,
+                );
+            }
+            if cfg.save_l2_labels {
+                let label_buf = if final_in_a { &l2_edges_bufs.label_a } else { &l2_edges_bufs.label_b };
+                let labels = readback_u32_buffer(device, queue, label_buf, cell_size);
+                let _ = visualization::save_l2_edge_label_overlay(
+                    src_path,
+                    &labels,
+                    l1_w as usize,
+                    l1_h as usize,
+                );
+            }
+            if cfg.save_l2_bboxes {
+                let box_count = readback_u32_buffer(device, queue, &l2_edges_bufs.box_count, 4);
+                let count = box_count.get(0).copied().unwrap_or(0);
+                let boxes_raw = readback_i32_buffer(device, queue, &l2_edges_bufs.boxes_out, (max_boxes as u64) * 16);
+                let boxes: Vec<Vec4i32> = boxes_raw
+                    .chunks_exact(4)
+                    .map(|c| Vec4i32 { x0: c[0], y0: c[1], x1: c[2], y1: c[3] })
+                    .collect();
+                let _ = visualization::save_l2_bbox_on_src(
+                    src_path,
+                    &boxes,
+                    count,
+                    l1_w as usize,
+                    l1_h as usize,
+                );
+            }
         }
     }
 
