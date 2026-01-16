@@ -1,14 +1,12 @@
 @group(0) @binding(0) var input_tex: texture_2d<u32>;
 @group(0) @binding(1) var<storage, read> input_img_info: array<u32>;
-
-// 1-pass, 3 outputs (R/G/B)
-@group(0) @binding(2) var<storage, read_write> output_r: array<u32>;
-@group(0) @binding(3) var<storage, read_write> output_g: array<u32>;
-@group(0) @binding(4) var<storage, read_write> output_b: array<u32>;
+@group(0) @binding(2) var<storage, read_write> output_packed: array<u32>;
+@group(0) @binding(3) var<storage, read_write> output_cell_rgb: array<u32>;
+@group(0) @binding(4) var<storage, read_write> output_edge4: array<u32>;
 
 const EDGE_TH_R: i32 = 15;
 const EDGE_TH_G: i32 = 15;
-const EDGE_TH_B: i32 = 30;
+const EDGE_TH_B: i32 = 20;
 
 fn load_rgb(x: i32, y: i32, width: u32, height: u32) -> vec3<i32> {
     if (width == 0u || height == 0u) {
@@ -32,55 +30,123 @@ fn dir_bit(dx: i32, dy: i32) -> u32 {
     return 1u << 7u;
 }
 
-fn pack_channel(dir8: u32, val8: u32) -> u32 {
-    // bit0: always 1 (store self regardless of active/inactive)
-    // bit1..8: dir8
-    // bit9..16: val8 (center channel value)
-    return 1u | ((dir8 & 0xFFu) << 1u) | ((val8 & 0xFFu) << 9u);
-}
-
 @compute @workgroup_size(16, 16)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (arrayLength(&input_img_info) < 2u) { return; }
     let height = input_img_info[0];
     let width  = input_img_info[1];
     if (width == 0u || height == 0u) { return; }
+    var edge_th_r: i32 = EDGE_TH_R;
+    var edge_th_g: i32 = EDGE_TH_G;
+    var edge_th_b: i32 = EDGE_TH_B;
+    var min_channels: u32 = 3u;
+    var pixel_min_dirs: u32 = 1u;
+    if (arrayLength(&input_img_info) >= 7u) {
+        edge_th_r = i32(input_img_info[2]);
+        edge_th_g = i32(input_img_info[3]);
+        edge_th_b = i32(input_img_info[4]);
+        let v = input_img_info[5];
+        min_channels = clamp(v, 1u, 3u);
+        let p = input_img_info[6];
+        pixel_min_dirs = clamp(p, 1u, 8u);
+    }
 
-    let x: i32 = i32(gid.x);
-    let y: i32 = i32(gid.y);
-    if (x >= i32(width) || y >= i32(height)) { return; }
+    let out_w: u32 = (width + 1u) / 2u;
+    let out_h: u32 = (height + 1u) / 2u;
+    let ox: u32 = gid.x;
+    let oy: u32 = gid.y;
+    if (ox >= out_w || oy >= out_h) { return; }
 
-    let c: vec3<i32> = load_rgb(x, y, width, height);
-    let rc: i32 = c.x;
-    let gc: i32 = c.y;
-    let bc: i32 = c.z;
+    let base_x: u32 = ox * 2u;
+    let base_y: u32 = oy * 2u;
+    var active_cnt: u32 = 0u;
+    var inactive_cnt: u32 = 0u;
+    var sum_r_act: u32 = 0u;
+    var sum_g_act: u32 = 0u;
+    var sum_b_act: u32 = 0u;
+    var sum_r_in: u32 = 0u;
+    var sum_g_in: u32 = 0u;
+    var sum_b_in: u32 = 0u;
+    var dir_or: u32 = 0u;
 
-    var dir8_r: u32 = 0u;
-    var dir8_g: u32 = 0u;
-    var dir8_b: u32 = 0u;
-
-    // Channel-wise independent DIR8, but neighbor RGB loads are shared.
-    for (var dy: i32 = -1; dy <= 1; dy = dy + 1) {
-        for (var dx: i32 = -1; dx <= 1; dx = dx + 1) {
-            if (dx == 0 && dy == 0) { continue; }
-
-            let n: vec3<i32> = load_rgb(x + dx, y + dy, width, height);
-            let b: u32 = dir_bit(dx, dy);
-
-            if (abs(rc - n.x) >= EDGE_TH_R) { dir8_r |= b; }
-            if (abs(gc - n.y) >= EDGE_TH_G) { dir8_g |= b; }
-            if (abs(bc - n.z) >= EDGE_TH_B) { dir8_b |= b; }
+    for (var dy: u32 = 0u; dy < 2u; dy = dy + 1u) {
+        let y: u32 = base_y + dy;
+        if (y >= height) { continue; }
+        for (var dx: u32 = 0u; dx < 2u; dx = dx + 1u) {
+            let x: u32 = base_x + dx;
+            if (x >= width) { continue; }
+            let c: vec3<i32> = load_rgb(i32(x), i32(y), width, height);
+            let rc: i32 = c.x;
+            let gc: i32 = c.y;
+            let bc: i32 = c.z;
+            var dir8_r: u32 = 0u;
+            var dir8_g: u32 = 0u;
+            var dir8_b: u32 = 0u;
+            for (var ddy: i32 = -1; ddy <= 1; ddy = ddy + 1) {
+                for (var ddx: i32 = -1; ddx <= 1; ddx = ddx + 1) {
+                    if (ddx == 0 && ddy == 0) { continue; }
+                    let n: vec3<i32> = load_rgb(i32(x) + ddx, i32(y) + ddy, width, height);
+                    let b: u32 = dir_bit(ddx, ddy);
+                    if (abs(rc - n.x) >= edge_th_r) { dir8_r |= b; }
+                    if (abs(gc - n.y) >= edge_th_g) { dir8_g |= b; }
+                    if (abs(bc - n.z) >= edge_th_b) { dir8_b |= b; }
+                }
+            }
+            var dir8: u32 = 0u;
+            for (var bit: u32 = 0u; bit < 8u; bit = bit + 1u) {
+                let mask: u32 = 1u << bit;
+                let cnt: u32 = select(0u, 1u, (dir8_r & mask) != 0u) +
+                               select(0u, 1u, (dir8_g & mask) != 0u) +
+                               select(0u, 1u, (dir8_b & mask) != 0u);
+                if (cnt >= min_channels) { dir8 = dir8 | mask; }
+            }
+            var dir_cnt: u32 = 0u;
+            for (var bit2: u32 = 0u; bit2 < 8u; bit2 = bit2 + 1u) {
+                dir_cnt = dir_cnt + select(0u, 1u, (dir8 & (1u << bit2)) != 0u);
+            }
+            let pixel_active: bool = dir_cnt >= pixel_min_dirs;
+            let rv: u32 = u32(rc) & 0xFFu;
+            let gv: u32 = u32(gc) & 0xFFu;
+            let bv: u32 = u32(bc) & 0xFFu;
+            if (pixel_active) {
+                active_cnt = active_cnt + 1u;
+                sum_r_act = sum_r_act + rv;
+                sum_g_act = sum_g_act + gv;
+                sum_b_act = sum_b_act + bv;
+                dir_or = dir_or | dir8;
+            } else {
+                inactive_cnt = inactive_cnt + 1u;
+                sum_r_in = sum_r_in + rv;
+                sum_g_in = sum_g_in + gv;
+                sum_b_in = sum_b_in + bv;
+            }
         }
     }
 
-    let out_idx: u32 = u32(y) * width + u32(x);
+    let block_active: bool = active_cnt >= inactive_cnt;
+    let sel_cnt: u32 = select(inactive_cnt, active_cnt, block_active);
+    let denom: u32 = max(sel_cnt, 1u);
+    let avg_r: u32 = select(sum_r_in, sum_r_act, block_active) / denom;
+    let avg_g: u32 = select(sum_g_in, sum_g_act, block_active) / denom;
+    let avg_b: u32 = select(sum_b_in, sum_b_act, block_active) / denom;
+    let dir8: u32 = select(0u, dir_or, block_active) & 0xFFu;
+    let out0: u32 = select(0u, 1u, block_active) | (dir8 << 1u);
+    let out1: u32 = (avg_r & 0xFFu) | ((avg_g & 0xFFu) << 8u) | ((avg_b & 0xFFu) << 16u);
+    let edge4: u32 = ((dir8 >> 0u) & 1u) |
+                     (((dir8 >> 2u) & 1u) << 1u) |
+                     (((dir8 >> 4u) & 1u) << 2u) |
+                     (((dir8 >> 6u) & 1u) << 3u);
 
-    // Always store self: bit0 is forced to 1 for all pixels.
-    let out_r_word: u32 = pack_channel(dir8_r, u32(rc) & 0xFFu);
-    let out_g_word: u32 = pack_channel(dir8_g, u32(gc) & 0xFFu);
-    let out_b_word: u32 = pack_channel(dir8_b, u32(bc) & 0xFFu);
-
-    if (out_idx < arrayLength(&output_r)) { output_r[out_idx] = out_r_word; }
-    if (out_idx < arrayLength(&output_g)) { output_g[out_idx] = out_g_word; }
-    if (out_idx < arrayLength(&output_b)) { output_b[out_idx] = out_b_word; }
+    let out_idx: u32 = oy * out_w + ox;
+    let base: u32 = out_idx * 2u;
+    if (base + 1u < arrayLength(&output_packed)) {
+        output_packed[base] = out0;
+        output_packed[base + 1u] = out1;
+    }
+    if (out_idx < arrayLength(&output_cell_rgb)) {
+        output_cell_rgb[out_idx] = out1;
+    }
+    if (out_idx < arrayLength(&output_edge4)) {
+        output_edge4[out_idx] = edge4;
+    }
 }

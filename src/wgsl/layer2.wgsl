@@ -5,7 +5,7 @@ const KERNEL: u32 = 2u;
 const STRIDE: u32 = 1u;
 
 @group(0) @binding(0) var<storage, read> input_img_info: array<u32>; // [height, width]
-@group(0) @binding(1) var<storage, read> layer1_out_mask: array<u32>; // packed (active<<16 | total)
+@group(0) @binding(1) var<storage, read> layer0_out_packed: array<u32>; // vec2<u32> per cell (out0/out1)
 @group(0) @binding(2) var<storage, read_write> pooled_mask: array<u32>; // out_w*out_h
 
 @compute @workgroup_size(16, 16, 1)
@@ -48,12 +48,12 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
             let ix: u32 = sx + dx;
             if (ix >= l1_w) { continue; }
             let idx: u32 = iy * l1_w + ix;
-            if (idx >= arrayLength(&layer1_out_mask)) { continue; }
-            let packed: u32 = layer1_out_mask[idx];
-            let cell_active: u32 = packed >> 16u;
-            let cell_total: u32 = packed & 0xFFFFu;
+            let base: u32 = idx * 2u;
+            if (base >= arrayLength(&layer0_out_packed)) { continue; }
+            let packed0: u32 = layer0_out_packed[base];
+            let cell_active: u32 = packed0 & 1u;
             active_cnt = active_cnt + cell_active;
-            total_cnt = total_cnt + cell_total;
+            total_cnt = total_cnt + 1u;
         }
     }
 

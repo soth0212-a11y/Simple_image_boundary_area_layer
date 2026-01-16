@@ -5,6 +5,7 @@ mod gpu;
 mod visualization;
 mod model;
 mod preprocessing;
+mod l1_gpu;
 mod l3_gpu;
 mod l4_gpu;
 mod l5;
@@ -17,9 +18,10 @@ fn main() -> std::io::Result<()> {
     
 
     let l0_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer0.wgsl"));
-    let l1_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer1.wgsl"));
     let l0_values = model::layer0_init(&device, l0_shader);
-    let l1_values = model::layer1_init(&device, l1_shader);
+    let l1_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer1_plane_label.wgsl"));
+    let l1_pipelines = l1_gpu::build_l1_pipelines(&device, l1_shader);
+    let mut l1_buffers: Option<l1_gpu::L1Buffers> = None;
     let l2_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2.wgsl"));
     let l2_values = model::layer2_init(&device, l2_shader);
     let l3_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer3_stride2_conn8.wgsl"));
@@ -54,7 +56,9 @@ fn main() -> std::io::Result<()> {
             &queue,
             img_buffer,
             img_info,
-            [&l0_values, &l1_values],
+            &l0_values,
+            &l1_pipelines,
+            &mut l1_buffers,
             &l2_values,
             &l3_pipelines,
             &mut l3_buffers,
@@ -88,7 +92,9 @@ fn main() -> std::io::Result<()> {
                             &queue,
                             img_buffer,
                             img_info,
-                            [&l0_values, &l1_values],
+                            &l0_values,
+                            &l1_pipelines,
+                            &mut l1_buffers,
                             &l2_values,
                             &l3_pipelines,
                             &mut l3_buffers,

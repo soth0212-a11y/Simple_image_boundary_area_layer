@@ -19,6 +19,12 @@ pub struct AppConfig {
     pub save_layer5_accum: bool,
     pub save_layer5_merged: bool,
     pub save_l5_debug: bool,
+    pub l1_iter: u32,
+    pub l0_edge_th_r: u32,
+    pub l0_edge_th_g: u32,
+    pub l0_edge_th_b: u32,
+    pub l0_dir_min_channels: u32,
+    pub l0_pixel_min_dirs: u32,
 }
 
 impl Default for AppConfig {
@@ -38,6 +44,12 @@ impl Default for AppConfig {
             save_layer5_accum: false,
             save_layer5_merged: false,
             save_l5_debug: false,
+            l1_iter: 0,
+            l0_edge_th_r: 15,
+            l0_edge_th_g: 15,
+            l0_edge_th_b: 20,
+            l0_dir_min_channels: 3,
+            l0_pixel_min_dirs: 1,
         }
     }
 }
@@ -66,9 +78,14 @@ fn load_from_paths(paths: &[&Path]) -> AppConfig {
 
 fn parse_config(text: &str) -> AppConfig {
     let mut cfg = AppConfig::default();
+    let mut section: Option<&str> = None;
     for line in text.lines() {
         let line = line.split('#').next().unwrap_or("").trim();
         if line.is_empty() {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            section = Some(line.trim_matches(&['[', ']'][..]).trim());
             continue;
         }
         let (key, value) = match line.split_once('=') {
@@ -77,6 +94,9 @@ fn parse_config(text: &str) -> AppConfig {
         };
         let key = key.trim();
         let value = value.trim().trim_matches('"');
+        let section = section.unwrap_or("");
+        let key_lower = key.to_ascii_lowercase();
+        let in_layer1 = section.eq_ignore_ascii_case("Layer1");
         match key {
             "MAX_IMAGES" => {
                 if let Ok(v) = value.parse::<usize>() {
@@ -104,7 +124,25 @@ fn parse_config(text: &str) -> AppConfig {
             "SAVE_L5_ACCUM" => cfg.save_layer5_accum = parse_bool(value),
             "SAVE_L5_MERGED" => cfg.save_layer5_merged = parse_bool(value),
             "SAVE_L5_DEBUG" => cfg.save_l5_debug = parse_bool(value),
-            _ => {}
+            "L1_ITER" => cfg.l1_iter = value.parse().unwrap_or(cfg.l1_iter),
+            "L0_EDGE_TH_R" => cfg.l0_edge_th_r = value.parse().unwrap_or(cfg.l0_edge_th_r),
+            "L0_EDGE_TH_G" => cfg.l0_edge_th_g = value.parse().unwrap_or(cfg.l0_edge_th_g),
+            "L0_EDGE_TH_B" => cfg.l0_edge_th_b = value.parse().unwrap_or(cfg.l0_edge_th_b),
+            "L0_DIR_MIN_CHANNELS" => cfg.l0_dir_min_channels = value.parse().unwrap_or(cfg.l0_dir_min_channels),
+            "L0_PIXEL_MIN_DIRS" => cfg.l0_pixel_min_dirs = value.parse().unwrap_or(cfg.l0_pixel_min_dirs),
+            _ => {
+                if in_layer1 {
+                    match key_lower.as_str() {
+                        "iter" => cfg.l1_iter = value.parse().unwrap_or(cfg.l1_iter),
+                        "edge_th_r" => cfg.l0_edge_th_r = value.parse().unwrap_or(cfg.l0_edge_th_r),
+                        "edge_th_g" => cfg.l0_edge_th_g = value.parse().unwrap_or(cfg.l0_edge_th_g),
+                        "edge_th_b" => cfg.l0_edge_th_b = value.parse().unwrap_or(cfg.l0_edge_th_b),
+                        "dir_min_channels" => cfg.l0_dir_min_channels = value.parse().unwrap_or(cfg.l0_dir_min_channels),
+                        "pixel_min_dirs" => cfg.l0_pixel_min_dirs = value.parse().unwrap_or(cfg.l0_pixel_min_dirs),
+                        _ => {}
+                    }
+                }
+            }
         }
     }
     cfg
@@ -145,11 +183,25 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     apply_env_bool("SAVE_L5_ACCUM", &mut cfg.save_layer5_accum);
     apply_env_bool("SAVE_L5_MERGED", &mut cfg.save_layer5_merged);
     apply_env_bool("SAVE_L5_DEBUG", &mut cfg.save_l5_debug);
+    apply_env_u32("L1_ITER", &mut cfg.l1_iter);
+    apply_env_u32("L1_EDGE_TH_R", &mut cfg.l0_edge_th_r);
+    apply_env_u32("L1_EDGE_TH_G", &mut cfg.l0_edge_th_g);
+    apply_env_u32("L1_EDGE_TH_B", &mut cfg.l0_edge_th_b);
+    apply_env_u32("L1_DIR_MIN_CHANNELS", &mut cfg.l0_dir_min_channels);
+    apply_env_u32("L1_PIXEL_MIN_DIRS", &mut cfg.l0_pixel_min_dirs);
 
 }
 
 fn apply_env_bool(name: &str, target: &mut bool) {
     if let Ok(v) = env::var(name) {
         *target = parse_bool(&v);
+    }
+}
+
+fn apply_env_u32(name: &str, target: &mut u32) {
+    if let Ok(v) = env::var(name) {
+        if let Ok(parsed) = v.parse::<u32>() {
+            *target = parsed;
+        }
     }
 }
