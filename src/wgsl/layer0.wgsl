@@ -4,6 +4,7 @@
 @group(0) @binding(3) var<storage, read_write> output_cell_rgb: array<u32>;
 @group(0) @binding(4) var<storage, read_write> output_edge4: array<u32>;
 @group(0) @binding(5) var<storage, read_write> output_s_active: array<u32>;
+@group(0) @binding(6) var<storage, read_write> output_color565: array<u32>;
 
 const EDGE_TH_R: i32 = 15;
 const EDGE_TH_G: i32 = 15;
@@ -168,5 +169,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
     if (out_idx < arrayLength(&output_s_active)) {
         output_s_active[out_idx] = out0 & 1u;
+    }
+    if (out_idx < arrayLength(&output_color565)) {
+        output_color565[out_idx] = q565 & 0xFFFFu;
     }
 }

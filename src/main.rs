@@ -5,7 +5,7 @@ mod gpu;
 mod visualization;
 mod model;
 mod preprocessing;
-mod l1_bbox_gpu;
+mod rle_ccl_gpu;
 
 fn main() -> std::io::Result<()> {
     env_logger::init();
@@ -13,9 +13,24 @@ fn main() -> std::io::Result<()> {
 
     let l0_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer0.wgsl"));
     let l0_values = model::layer0_init(&device, l0_shader);
-    let l1_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer1_bbox.wgsl"));
-    let l1_pipelines = l1_bbox_gpu::build_l1_bbox_pipelines(&device, l1_shader);
-    let mut l1_buffers: Option<l1_bbox_gpu::L1BboxBuffers> = None;
+
+    let l1_count_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer1_rle_count.wgsl"));
+    let l1_emit_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer1_rle_emit.wgsl"));
+    let l2_init_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_ccl_init.wgsl"));
+    let l2_union_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_ccl_union.wgsl"));
+    let l2_reduce_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_ccl_reduce.wgsl"));
+    let l2_emit_boxes_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_ccl_emit_boxes.wgsl"));
+    let rle_ccl_pipelines = rle_ccl_gpu::build_rle_ccl_pipelines(
+        &device,
+        l1_count_shader,
+        l1_emit_shader,
+        l2_init_shader,
+        l2_union_shader,
+        l2_reduce_shader,
+        l2_emit_boxes_shader,
+    );
+    let mut rle_ccl_buffers: Option<rle_ccl_gpu::RleCclBuffers> = None;
+
     let cfg = config::init();
     let images_dir = match cfg.images_dir.clone() {
         Some(v) => v,
@@ -40,8 +55,8 @@ fn main() -> std::io::Result<()> {
             img_buffer,
             img_info,
             &l0_values,
-            &l1_pipelines,
-            &mut l1_buffers,
+            &rle_ccl_pipelines,
+            &mut rle_ccl_buffers,
             &path,
         );
         return Ok(());
@@ -67,8 +82,8 @@ fn main() -> std::io::Result<()> {
                             img_buffer,
                             img_info,
                             &l0_values,
-                            &l1_pipelines,
-                            &mut l1_buffers,
+                            &rle_ccl_pipelines,
+                            &mut rle_ccl_buffers,
                             &path,
                         );
                         processed += 1;

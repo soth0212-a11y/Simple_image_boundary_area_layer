@@ -9,15 +9,20 @@ pub struct AppConfig {
     pub test_image: Option<PathBuf>,
     pub images_dir: Option<PathBuf>,
     pub save_layer0: bool,
-    pub save_l1_bbox: bool,
-    pub save_l1_bbox_stride2: bool,
+    pub save_l1_segments: bool,
+    pub save_l2_boxes: bool,
     pub log_timing: bool,
     pub l0_edge_th_r: u32,
     pub l0_edge_th_g: u32,
     pub l0_edge_th_b: u32,
     pub l0_dir_min_channels: u32,
     pub l0_pixel_min_dirs: u32,
-    pub l1_enable_stride2: bool,
+    pub l2_max_out: u32,
+    pub l2_min_w: u32,
+    pub l2_min_h: u32,
+    pub l2_color_tol: u32,
+    pub l2_gap_x: u32,
+    pub l2_gap_y: u32,
 }
 
 impl Default for AppConfig {
@@ -27,15 +32,20 @@ impl Default for AppConfig {
             test_image: None,
             images_dir: None,
             save_layer0: false,
-            save_l1_bbox: false,
-            save_l1_bbox_stride2: false,
+            save_l1_segments: false,
+            save_l2_boxes: false,
             log_timing: false,
             l0_edge_th_r: 15,
             l0_edge_th_g: 15,
             l0_edge_th_b: 20,
             l0_dir_min_channels: 3,
             l0_pixel_min_dirs: 1,
-            l1_enable_stride2: false,
+            l2_max_out: 1_000_000,
+            l2_min_w: 2,
+            l2_min_h: 2,
+            l2_color_tol: 20,
+            l2_gap_x: 1,
+            l2_gap_y: 1,
         }
     }
 }
@@ -84,6 +94,7 @@ fn parse_config(text: &str) -> AppConfig {
         let key_lower = key.to_ascii_lowercase();
         let in_layer0 = section.eq_ignore_ascii_case("Layer0");
         let in_layer1 = section.eq_ignore_ascii_case("Layer1");
+        let in_layer2 = section.eq_ignore_ascii_case("Layer2");
         match key {
             "MAX_IMAGES" => {
                 if let Ok(v) = value.parse::<usize>() {
@@ -101,15 +112,20 @@ fn parse_config(text: &str) -> AppConfig {
                 }
             }
             "SAVE_LAYER0" => cfg.save_layer0 = parse_bool(value),
-            "SAVE_L1_BBOX" => cfg.save_l1_bbox = parse_bool(value),
-            "SAVE_L1_BBOX_STRIDE2" => cfg.save_l1_bbox_stride2 = parse_bool(value),
+            "SAVE_L1_SEGMENTS" => cfg.save_l1_segments = parse_bool(value),
+            "SAVE_L2_BOXES" => cfg.save_l2_boxes = parse_bool(value),
             "LOG_TIMING" => cfg.log_timing = parse_bool(value),
             "L0_EDGE_TH_R" => cfg.l0_edge_th_r = value.parse().unwrap_or(cfg.l0_edge_th_r),
             "L0_EDGE_TH_G" => cfg.l0_edge_th_g = value.parse().unwrap_or(cfg.l0_edge_th_g),
             "L0_EDGE_TH_B" => cfg.l0_edge_th_b = value.parse().unwrap_or(cfg.l0_edge_th_b),
             "L0_DIR_MIN_CHANNELS" => cfg.l0_dir_min_channels = value.parse().unwrap_or(cfg.l0_dir_min_channels),
             "L0_PIXEL_MIN_DIRS" => cfg.l0_pixel_min_dirs = value.parse().unwrap_or(cfg.l0_pixel_min_dirs),
-            "L1_ENABLE_STRIDE2" => cfg.l1_enable_stride2 = parse_bool(value),
+            "L2_MAX_OUT" => cfg.l2_max_out = value.parse().unwrap_or(cfg.l2_max_out),
+            "L2_MIN_W" => cfg.l2_min_w = value.parse().unwrap_or(cfg.l2_min_w),
+            "L2_MIN_H" => cfg.l2_min_h = value.parse().unwrap_or(cfg.l2_min_h),
+            "L2_COLOR_TOL" => cfg.l2_color_tol = value.parse().unwrap_or(cfg.l2_color_tol),
+            "L2_GAP_X" => cfg.l2_gap_x = value.parse().unwrap_or(cfg.l2_gap_x),
+            "L2_GAP_Y" => cfg.l2_gap_y = value.parse().unwrap_or(cfg.l2_gap_y),
             _ => {
                 if in_layer0 {
                     match key_lower.as_str() {
@@ -121,9 +137,14 @@ fn parse_config(text: &str) -> AppConfig {
                         _ => {}
                     }
                 }
-                if in_layer1 {
+                if in_layer2 {
                     match key_lower.as_str() {
-                        "enable_stride2" => cfg.l1_enable_stride2 = parse_bool(value),
+                        "max_out" => cfg.l2_max_out = value.parse().unwrap_or(cfg.l2_max_out),
+                        "min_w" => cfg.l2_min_w = value.parse().unwrap_or(cfg.l2_min_w),
+                        "min_h" => cfg.l2_min_h = value.parse().unwrap_or(cfg.l2_min_h),
+                        "color_tol" => cfg.l2_color_tol = value.parse().unwrap_or(cfg.l2_color_tol),
+                        "gap_x" => cfg.l2_gap_x = value.parse().unwrap_or(cfg.l2_gap_x),
+                        "gap_y" => cfg.l2_gap_y = value.parse().unwrap_or(cfg.l2_gap_y),
                         _ => {}
                     }
                 }
@@ -158,15 +179,20 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     }
 
     apply_env_bool("SAVE_LAYER0", &mut cfg.save_layer0);
-    apply_env_bool("SAVE_L1_BBOX", &mut cfg.save_l1_bbox);
-    apply_env_bool("SAVE_L1_BBOX_STRIDE2", &mut cfg.save_l1_bbox_stride2);
+    apply_env_bool("SAVE_L1_SEGMENTS", &mut cfg.save_l1_segments);
+    apply_env_bool("SAVE_L2_BOXES", &mut cfg.save_l2_boxes);
     apply_env_bool("LOG_TIMING", &mut cfg.log_timing);
     apply_env_u32("L0_EDGE_TH_R", &mut cfg.l0_edge_th_r);
     apply_env_u32("L0_EDGE_TH_G", &mut cfg.l0_edge_th_g);
     apply_env_u32("L0_EDGE_TH_B", &mut cfg.l0_edge_th_b);
     apply_env_u32("L0_DIR_MIN_CHANNELS", &mut cfg.l0_dir_min_channels);
     apply_env_u32("L0_PIXEL_MIN_DIRS", &mut cfg.l0_pixel_min_dirs);
-    apply_env_bool("L1_ENABLE_STRIDE2", &mut cfg.l1_enable_stride2);
+    apply_env_u32("L2_MAX_OUT", &mut cfg.l2_max_out);
+    apply_env_u32("L2_MIN_W", &mut cfg.l2_min_w);
+    apply_env_u32("L2_MIN_H", &mut cfg.l2_min_h);
+    apply_env_u32("L2_COLOR_TOL", &mut cfg.l2_color_tol);
+    apply_env_u32("L2_GAP_X", &mut cfg.l2_gap_x);
+    apply_env_u32("L2_GAP_Y", &mut cfg.l2_gap_y);
 }
 
 fn apply_env_bool(name: &str, target: &mut bool) {
