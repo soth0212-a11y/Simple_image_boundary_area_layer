@@ -11,13 +11,13 @@ pub async fn gpu_init() -> (wgpu::Device, wgpu::Adapter, wgpu::Queue) {
     // println!("Running on Adapter: {:#?}", adapter.get_info());
 
     let mut limits = adapter.limits();
-    if limits.max_storage_buffers_per_shader_stage < 8 {
+    if limits.max_storage_buffers_per_shader_stage < 12 {
         panic!(
-            "wgpu - max_storage_buffers_per_shader_stage {} is too low for L1 outputs",
+            "wgpu - max_storage_buffers_per_shader_stage {} is too low for L5 outputs",
             limits.max_storage_buffers_per_shader_stage
         );
     }
-    limits.max_storage_buffers_per_shader_stage = 8;
+    limits.max_storage_buffers_per_shader_stage = 12;
 
     let required_features = wgpu::Features::empty();
 

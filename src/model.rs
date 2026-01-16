@@ -29,13 +29,21 @@ pub struct Layer1Out { pub dir_flags: u32 }
 
 pub struct Layer1Outputs {
     pub mask: wgpu::Buffer,
-    pub inactive_avg: wgpu::Buffer,
+    pub out_r: wgpu::Buffer,
+    pub out_g: wgpu::Buffer,
+    pub out_b: wgpu::Buffer,
 }
 
 pub struct Layer2Outputs {
     pub mask: wgpu::Buffer,
     pub out_w: u32,
     pub out_h: u32,
+}
+
+pub struct Layer0Outputs {
+    pub r: wgpu::Buffer,
+    pub g: wgpu::Buffer,
+    pub b: wgpu::Buffer,
 }
 
 #[repr(C)]
@@ -86,6 +94,8 @@ pub fn layer0_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> 
             wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Uint, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
         ][..],
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&bindgroup_layout], push_constant_ranges: &[][..] });
@@ -97,11 +107,14 @@ pub fn layer1_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> 
     let bindgroup_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
         label: Some("l1_layout"),
         entries: &[
-            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Uint, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 6, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 7, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
         ][..],
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&bindgroup_layout], push_constant_ranges: &[][..] });
@@ -132,12 +145,14 @@ pub fn layer2_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> 
 
 // ---- 레이어 실행 함수 ----
 
-pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::TextureView, img_info: preprocessing::Imginfo, static_vals: &layer_static_values) -> (wgpu::Buffer, [u32; 4]) {
+pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::TextureView, img_info: preprocessing::Imginfo, static_vals: &layer_static_values) -> (Layer0Outputs, [u32; 4]) {
     let info = [img_info.height, img_info.width, img_info.height, img_info.width];
     let grid_w = img_info.width;
     let grid_h = img_info.height;
     let out_size = (grid_w * grid_h) as u64 * 4; // u32 mask per cell
-    let out_buf = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: out_size, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
+    let out_r = device.create_buffer(&wgpu::BufferDescriptor { label: Some("layer0_out_r"), size: out_size, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
+    let out_g = device.create_buffer(&wgpu::BufferDescriptor { label: Some("layer0_out_g"), size: out_size, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
+    let out_b = device.create_buffer(&wgpu::BufferDescriptor { label: Some("layer0_out_b"), size: out_size, usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC, mapped_at_creation: false });
     let info_buf_data = [img_info.height, img_info.width];
     let info_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: bytemuck::cast_slice(&info_buf_data), usage: wgpu::BufferUsages::STORAGE });
     
@@ -146,7 +161,9 @@ pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::Textu
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(img_view) },
             wgpu::BindGroupEntry { binding: 1, resource: info_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: out_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 2, resource: out_r.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 3, resource: out_g.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 4, resource: out_b.as_entire_binding() },
         ][..],
         label: None,
     });
@@ -159,14 +176,14 @@ pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::Textu
         pass.dispatch_workgroups((grid_w + 15) / 16, (grid_h + 15) / 16, 1);
     }
     queue.submit([enc.finish()]);
-    (out_buf, info)
+    (Layer0Outputs { r: out_r, g: out_g, b: out_b }, info)
 }
+
 
 pub fn layer1(
     device: &wgpu::Device,
     queue: &wgpu::Queue,
-    img_view: &wgpu::TextureView,
-    l0_buf: &wgpu::Buffer,
+    l0_out: &Layer0Outputs,
     img_info: [u32; 4],
     static_vals: &layer_static_values,
     src_path: &Path,
@@ -186,15 +203,29 @@ pub fn layer1(
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
-    let inactive_avg = device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("layer1_inactive_avg"),
+    let out_r = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("layer1_out_r"),
+        size: buf_size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let out_g = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("layer1_out_g"),
+        size: buf_size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+        mapped_at_creation: false,
+    });
+    let out_b = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("layer1_out_b"),
         size: buf_size,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,
     });
     let zero = vec![0u8; buf_size as usize];
     queue.write_buffer(&out_mask, 0, &zero);
-    queue.write_buffer(&inactive_avg, 0, &zero);
+    queue.write_buffer(&out_r, 0, &zero);
+    queue.write_buffer(&out_g, 0, &zero);
+    queue.write_buffer(&out_b, 0, &zero);
 
     let info_buf = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
         label: Some("layer1_info"),
@@ -205,11 +236,14 @@ pub fn layer1(
     let bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
         layout: &static_vals.bindgroup_layout,
         entries: &[
-            wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(img_view) },
-            wgpu::BindGroupEntry { binding: 1, resource: info_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: l0_buf.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: out_mask.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: inactive_avg.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 0, resource: info_buf.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 1, resource: l0_out.r.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 2, resource: l0_out.g.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 3, resource: l0_out.b.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 4, resource: out_mask.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: out_r.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 6, resource: out_g.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 7, resource: out_b.as_entire_binding() },
         ][..],
         label: Some("layer1_bg"),
     });
@@ -232,10 +266,28 @@ pub fn layer1(
             out_h as usize,
             "mask",
         );
+        let r = readback_u32_buffer(device, queue, &out_r, buf_size);
+        let g = readback_u32_buffer(device, queue, &out_g, buf_size);
+        let b = readback_u32_buffer(device, queue, &out_b, buf_size);
+        let _ = visualization::save_layer1_channel(src_path, &mask, &r, out_w as usize, out_h as usize, "val", "r");
+        let _ = visualization::save_layer1_channel(src_path, &mask, &g, out_w as usize, out_h as usize, "val", "g");
+        let _ = visualization::save_layer1_channel(src_path, &mask, &b, out_w as usize, out_h as usize, "val", "b");
+        let _ = visualization::save_layer1_rgb_composite(
+            src_path,
+            &mask,
+            &r,
+            &g,
+            &b,
+            out_w as usize,
+            out_h as usize,
+            "val",
+        );
     }
     Layer1Outputs {
         mask: out_mask,
-        inactive_avg,
+        out_r,
+        out_g,
+        out_b,
     }
 }
 
@@ -342,13 +394,12 @@ pub fn model(
 
     // ---- Layer0 ----
     let l0_start = Instant::now();
-    let (l0_dirs, info) = layer0(device, queue, &img_view, img_info, static_vals[0]);
+    let (l0_out, info) = layer0(device, queue, &img_view, img_info, static_vals[0]);
     device.poll(wgpu::PollType::Wait);
     let l0_dur = l0_start.elapsed();
-
     // ---- Layer1 ----
     let l1_start = Instant::now();
-    let l1_out = layer1(device, queue, &img_view, &l0_dirs, info, static_vals[1], src_path);
+    let l1_out = layer1(device, queue, &l0_out, info, static_vals[1], src_path);
     device.poll(wgpu::PollType::Wait);
     let l1_dur = l1_start.elapsed();
 
@@ -474,67 +525,56 @@ pub fn model(
                 *l5_buffers = Some(l5::ensure_l5_buffers(device, l3_out_w, l3_out_h));
             }
             let l5_bufs = l5_buffers.as_ref().unwrap();
-            let gap = l5::default_gap();
-            let iterations = l5::default_iterations(l3_out_w, l3_out_h);
+            let threshold = l5::default_threshold();
+            let iterations = l5::default_iters(l3_out_w, l3_out_h);
             let l5_start = Instant::now();
             let final_is_a = l5::dispatch_l5(
                 device,
                 queue,
                 l5_pipelines,
                 l5_bufs,
-                &l4_bufs.bbox0,
-                &l4_bufs.bbox1,
-                &l4_bufs.meta,
-                gap,
+                &l3_bufs.s_active,
+                &l3_bufs.conn8,
+                threshold,
                 iterations,
             );
             device.poll(wgpu::PollType::Wait);
             l5_dur = l5_start.elapsed();
 
-            let l5_size = (l3_out_w * l3_out_h) as u64 * 4;
-            let label_buf = if final_is_a { &l5_bufs.label_a } else { &l5_bufs.label_b };
-            let labels = readback_u32_buffer(device, queue, label_buf, l5_size);
-            let acc_minx = readback_u32_buffer(device, queue, &l5_bufs.acc_minx, l5_size);
-            let acc_miny = readback_u32_buffer(device, queue, &l5_bufs.acc_miny, l5_size);
-            let acc_maxx = readback_u32_buffer(device, queue, &l5_bufs.acc_maxx, l5_size);
-            let acc_maxy = readback_u32_buffer(device, queue, &l5_bufs.acc_maxy, l5_size);
-            let acc_count = readback_u32_buffer(device, queue, &l5_bufs.acc_count, l5_size);
-            let min_count = l5::default_min_count();
-            let merged = l5::compact_merged_boxes(
-                &acc_minx,
-                &acc_miny,
-                &acc_maxx,
-                &acc_maxy,
-                &acc_count,
-                min_count,
-            );
-
-            if config::get().save_layer5_labels {
-                let _ = visualization::save_layer5_labels(
+            if config::get().save_l5_debug {
+                let tile_bytes = (l5_bufs.tile_w * l5_bufs.tile_h) as u64 * 4;
+                let cell_bytes = (l5_bufs.w * l5_bufs.h) as u64 * 4;
+                let score = readback_u32_buffer(device, queue, &l5_bufs.score_map, tile_bytes);
+                let keep = readback_u32_buffer(device, queue, &l5_bufs.tile_keep, tile_bytes);
+                let roi = readback_u32_buffer(device, queue, &l5_bufs.roi_mask, cell_bytes);
+                let label_buf = if final_is_a { &l5_bufs.label_a } else { &l5_bufs.label_b };
+                let labels = readback_u32_buffer(device, queue, label_buf, cell_bytes);
+                let _ = visualization::save_l5_score_map(
                     src_path,
-                    &labels,
-                    l3_out_w as usize,
-                    l3_out_h as usize,
+                    &score,
+                    l5_bufs.tile_w as usize,
+                    l5_bufs.tile_h as usize,
                     "l5",
                 );
-            }
-            if config::get().save_layer5_accum {
-                let _ = visualization::save_layer5_accum_mask(
+                let _ = visualization::save_l5_tile_keep(
                     src_path,
-                    &labels,
-                    &acc_count,
-                    l3_out_w as usize,
-                    l3_out_h as usize,
-                    min_count,
+                    &keep,
+                    l5_bufs.tile_w as usize,
+                    l5_bufs.tile_h as usize,
                     "l5",
                 );
-            }
-            if config::get().save_layer5_merged {
-                let _ = visualization::save_layer5_merged_overlay(
+                let _ = visualization::save_l5_roi_mask(
                     src_path,
-                    &merged,
-                    l3_out_w as usize,
-                    l3_out_h as usize,
+                    &roi,
+                    l5_bufs.w as usize,
+                    l5_bufs.h as usize,
+                    "l5",
+                );
+                let _ = visualization::save_l5_label_map(
+                    src_path,
+                    &labels,
+                    l5_bufs.w as usize,
+                    l5_bufs.h as usize,
                     "l5",
                 );
             }
@@ -545,13 +585,32 @@ pub fn model(
     let grid3_h = height;
     if config::get().save_layer0 {
         let l0_bytes = (grid3_w * grid3_h) as u64 * 4;
-        let raw = readback_u32_buffer(device, queue, &l0_dirs, l0_bytes);
-        let _ = visualization::save_layer0_dir_overlay(
+        let raw_r = readback_u32_buffer(device, queue, &l0_out.r, l0_bytes);
+        let raw_g = readback_u32_buffer(device, queue, &l0_out.g, l0_bytes);
+        let raw_b = readback_u32_buffer(device, queue, &l0_out.b, l0_bytes);
+        let _ = visualization::save_layer0_channel_overlay(
             src_path,
-            &raw,
+            &raw_r,
             grid3_w as usize,
             grid3_h as usize,
             "mask",
+            "r",
+        );
+        let _ = visualization::save_layer0_channel_overlay(
+            src_path,
+            &raw_g,
+            grid3_w as usize,
+            grid3_h as usize,
+            "mask",
+            "g",
+        );
+        let _ = visualization::save_layer0_channel_overlay(
+            src_path,
+            &raw_b,
+            grid3_w as usize,
+            grid3_h as usize,
+            "mask",
+            "b",
         );
     }
 

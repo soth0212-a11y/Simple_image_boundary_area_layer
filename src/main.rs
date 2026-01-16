@@ -28,7 +28,7 @@ fn main() -> std::io::Result<()> {
     let l4_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer4_channels.wgsl"));
     let l4_pipelines = l4_gpu::build_l4_channels_pipelines(&device, l4_shader);
     let mut l4_buffers: Option<l4_gpu::L4ChannelsBuffers> = None;
-    let l5_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer5_merge_bboxes.wgsl"));
+    let l5_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer5_threshold_refine.wgsl"));
     let l5_pipelines = l5::build_l5_pipelines(&device, l5_shader);
     let mut l5_buffers: Option<l5::L5Buffers> = None;
     let cfg = config::init();

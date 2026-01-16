@@ -18,6 +18,7 @@ pub struct AppConfig {
     pub save_layer5_labels: bool,
     pub save_layer5_accum: bool,
     pub save_layer5_merged: bool,
+    pub save_l5_debug: bool,
 }
 
 impl Default for AppConfig {
@@ -36,6 +37,7 @@ impl Default for AppConfig {
             save_layer5_labels: false,
             save_layer5_accum: false,
             save_layer5_merged: false,
+            save_l5_debug: false,
         }
     }
 }
@@ -101,6 +103,7 @@ fn parse_config(text: &str) -> AppConfig {
             "SAVE_L5_LABELS" => cfg.save_layer5_labels = parse_bool(value),
             "SAVE_L5_ACCUM" => cfg.save_layer5_accum = parse_bool(value),
             "SAVE_L5_MERGED" => cfg.save_layer5_merged = parse_bool(value),
+            "SAVE_L5_DEBUG" => cfg.save_l5_debug = parse_bool(value),
             _ => {}
         }
     }
@@ -141,6 +144,7 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     apply_env_bool("SAVE_L5_LABELS", &mut cfg.save_layer5_labels);
     apply_env_bool("SAVE_L5_ACCUM", &mut cfg.save_layer5_accum);
     apply_env_bool("SAVE_L5_MERGED", &mut cfg.save_layer5_merged);
+    apply_env_bool("SAVE_L5_DEBUG", &mut cfg.save_l5_debug);
 
 }
 

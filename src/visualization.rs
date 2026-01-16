@@ -211,6 +211,80 @@ pub fn save_layer0_dir_overlay(
     Ok(())
 }
 
+pub fn save_layer0_rgb_overlay(
+    src_path: &Path,
+    r: &[u32],
+    g: &[u32],
+    b: &[u32],
+    grid_w: usize,
+    grid_h: usize,
+    name_suffix: &str,
+) -> Result<(), image::ImageError> {
+    if grid_w == 0 || grid_h == 0 {
+        return Ok(());
+    }
+    let count = grid_w * grid_h;
+    if r.len() < count || g.len() < count || b.len() < count {
+        return Ok(());
+    }
+    let mut img = image::RgbaImage::new(grid_w as u32, grid_h as u32);
+    for y in 0..grid_h {
+        for x in 0..grid_w {
+            let idx = y * grid_w + x;
+            let mr = (r[idx] >> 1) & 0xFF;
+            let mg = (g[idx] >> 1) & 0xFF;
+            let mb = (b[idx] >> 1) & 0xFF;
+            let vr = (mr.count_ones() * 32).min(255) as u8;
+            let vg = (mg.count_ones() * 32).min(255) as u8;
+            let vb = (mb.count_ones() * 32).min(255) as u8;
+            img.put_pixel(x as u32, y as u32, Rgba([vr, vg, vb, 255]));
+        }
+    }
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer0_rgb_{}_{}.png", stem, name_suffix, time)))?;
+    Ok(())
+}
+
+pub fn save_layer0_channel_overlay(
+    src_path: &Path,
+    channel: &[u32],
+    grid_w: usize,
+    grid_h: usize,
+    name_suffix: &str,
+    channel_tag: &str,
+) -> Result<(), image::ImageError> {
+    if grid_w == 0 || grid_h == 0 || channel.len() < grid_w * grid_h {
+        return Ok(());
+    }
+    let mut img = image::RgbaImage::new(grid_w as u32, grid_h as u32);
+    for y in 0..grid_h {
+        for x in 0..grid_w {
+            let idx = y * grid_w + x;
+            let dir8 = (channel[idx] >> 1) & 0xFF;
+            let val = ((channel[idx] >> 9) & 0xFF) as u8;
+            let color = if dir8 != 0 {
+                Rgba([200, 200, 200, 255])
+            } else {
+                match channel_tag {
+                    "r" => Rgba([val, 0, 0, 255]),
+                    "g" => Rgba([0, val, 0, 255]),
+                    "b" => Rgba([0, 0, val, 255]),
+                    _ => Rgba([val, val, val, 255]),
+                }
+            };
+            img.put_pixel(x as u32, y as u32, color);
+        }
+    }
+
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer0_{}_{}_{}.png", stem, channel_tag, name_suffix, time)))?;
+    Ok(())
+}
+
 
 
 pub fn save_layer1_mask_overlay(
@@ -235,7 +309,7 @@ pub fn save_layer1_mask_overlay(
         return Ok(());
     }
 
-    let color_active = Rgba([255, 80, 80, 255]);
+    let color_active = Rgba([200, 200, 200, 255]);
     let color_inactive = Rgba([128, 128, 128, 255]);
 
     for idx in 0..cell_count {
@@ -256,6 +330,88 @@ pub fn save_layer1_mask_overlay(
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
     img.save(Path::new(SAVE_DIR).join(format!("{}_layer1_mask_{}_{}.png", stem, name_suffix, time)))?;
+    Ok(())
+}
+
+pub fn save_layer1_channel(
+    src_path: &Path,
+    masks: &[u32],
+    data: &[u32],
+    grid_w: usize,
+    grid_h: usize,
+    name_suffix: &str,
+    channel: &str,
+) -> Result<(), image::ImageError> {
+    if grid_w == 0 || grid_h == 0 || data.len() < grid_w * grid_h || masks.len() < grid_w * grid_h {
+        return Ok(());
+    }
+    let mut img = image::RgbaImage::new(grid_w as u32, grid_h as u32);
+    for y in 0..grid_h {
+        for x in 0..grid_w {
+            let idx = y * grid_w + x;
+            let m = masks[idx];
+            let active = (m >> 16) & 0xFFFF;
+            let total = m & 0xFFFF;
+            let v = (data[idx] & 0xFFu32) as u8;
+            let color = if total != 0 && active == total {
+                Rgba([200, 200, 200, 255])
+            } else {
+                match channel {
+                    "r" => Rgba([v, 0, 0, 255]),
+                    "g" => Rgba([0, v, 0, 255]),
+                    "b" => Rgba([0, 0, v, 255]),
+                    _ => Rgba([v, v, v, 255]),
+                }
+            };
+            img.put_pixel(x as u32, y as u32, color);
+        }
+    }
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer1_{}_{}_{}.png", stem, channel, name_suffix, time)))?;
+    Ok(())
+}
+
+pub fn save_layer1_rgb_composite(
+    src_path: &Path,
+    mask: &[u32],
+    r: &[u32],
+    g: &[u32],
+    b: &[u32],
+    grid_w: usize,
+    grid_h: usize,
+    name_suffix: &str,
+) -> Result<(), image::ImageError> {
+    if grid_w == 0 || grid_h == 0 {
+        return Ok(());
+    }
+    let count = grid_w * grid_h;
+    if mask.len() < count || r.len() < count || g.len() < count || b.len() < count {
+        return Ok(());
+    }
+    let mut img = image::RgbaImage::new(grid_w as u32, grid_h as u32);
+    for y in 0..grid_h {
+        for x in 0..grid_w {
+            let idx = y * grid_w + x;
+            let m = mask[idx];
+            let active = (m >> 16) & 0xFFFF;
+            let total = m & 0xFFFF;
+            let color = if total != 0 && active == total {
+                Rgba([200, 200, 200, 255])
+            } else {
+                let rv = (r[idx] & 0xFFu32) as u8;
+                let gv = (g[idx] & 0xFFu32) as u8;
+                let bv = (b[idx] & 0xFFu32) as u8;
+                Rgba([rv, gv, bv, 255])
+            };
+            img.put_pixel(x as u32, y as u32, color);
+        }
+    }
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_layer1_rgb_{}_{}.png", stem, name_suffix, time)))?;
     Ok(())
 }
 
@@ -680,14 +836,73 @@ pub fn save_layer5_accum_mask(
     Ok(())
 }
 
-pub fn save_layer5_merged_overlay(
+pub fn save_l5_score_map(
     src_path: &Path,
-    merged: &[crate::l5::MergedBox],
+    score: &[u32],
+    tile_w: usize,
+    tile_h: usize,
+    tag: &str,
+) -> Result<(), image::ImageError> {
+    if tile_w == 0 || tile_h == 0 {
+        return Ok(());
+    }
+    if score.len() < tile_w * tile_h {
+        return Ok(());
+    }
+    let mut img = image::RgbaImage::new(tile_w as u32, tile_h as u32);
+    for y in 0..tile_h {
+        for x in 0..tile_w {
+            let idx = y * tile_w + x;
+            let v = score[idx].min(255) as u8;
+            img.put_pixel(x as u32, y as u32, Rgba([v, v, v, 255]));
+        }
+    }
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l5_score_{}_{}.png", stem, tag, time)))?;
+    Ok(())
+}
+
+pub fn save_l5_tile_keep(
+    src_path: &Path,
+    keep: &[u32],
+    tile_w: usize,
+    tile_h: usize,
+    tag: &str,
+) -> Result<(), image::ImageError> {
+    if tile_w == 0 || tile_h == 0 {
+        return Ok(());
+    }
+    if keep.len() < tile_w * tile_h {
+        return Ok(());
+    }
+    let mut img = image::RgbaImage::new(tile_w as u32, tile_h as u32);
+    for y in 0..tile_h {
+        for x in 0..tile_w {
+            let idx = y * tile_w + x;
+            let v = if keep[idx] != 0 { 255u8 } else { 0u8 };
+            img.put_pixel(x as u32, y as u32, Rgba([v, v, v, 255]));
+        }
+    }
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l5_tilekeep_{}_{}.png", stem, tag, time)))?;
+    Ok(())
+}
+
+pub fn save_l5_roi_mask(
+    src_path: &Path,
+    roi: &[u32],
     w: usize,
     h: usize,
     tag: &str,
 ) -> Result<(), image::ImageError> {
     if w == 0 || h == 0 {
+        return Ok(());
+    }
+    if roi.len() < w * h {
         return Ok(());
     }
     let mut img = image::open(src_path)?.to_rgba8();
@@ -697,26 +912,61 @@ pub fn save_layer5_merged_overlay(
         return Ok(());
     }
     let color = Rgba([255, 255, 255, 255]);
-    for b in merged {
-        if b.x1 == 0 || b.y1 == 0 {
-            continue;
+    for y in 0..h {
+        for x in 0..w {
+            let idx = y * w + x;
+            if roi[idx] == 0 {
+                continue;
+            }
+            let left = if x > 0 { roi[idx - 1] } else { 0 };
+            let right = if x + 1 < w { roi[idx + 1] } else { 0 };
+            let up = if y > 0 { roi[idx - w] } else { 0 };
+            let down = if y + 1 < h { roi[idx + w] } else { 0 };
+            let is_edge = left == 0 || right == 0 || up == 0 || down == 0;
+            if !is_edge {
+                continue;
+            }
+            let (sx0, sx1) = span_1d(x, w, orig_w);
+            let (sy0, sy1) = span_1d(y, h, orig_h);
+            draw_rect_outline(&mut img, sx0, sy0, sx1, sy1, color);
         }
-        if b.x1 <= b.x0 || b.y1 <= b.y0 {
-            continue;
-        }
-        let x0 = b.x0 as usize;
-        let y0 = b.y0 as usize;
-        let x1 = b.x1.saturating_sub(1) as usize;
-        let y1 = b.y1.saturating_sub(1) as usize;
-        let (px0, _) = span_1d(x0, w, orig_w);
-        let (_, px1) = span_1d(x1, w, orig_w);
-        let (py0, _) = span_1d(y0, h, orig_h);
-        let (_, py1) = span_1d(y1, h, orig_h);
-        draw_rect_outline(&mut img, px0, py0, px1, py1, color);
     }
     fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
     let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
     let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
-    img.save(Path::new(SAVE_DIR).join(format!("{}_layer5_merged_{}_{}.png", stem, tag, time)))?;
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l5_roi_{}_{}.png", stem, tag, time)))?;
+    Ok(())
+}
+
+pub fn save_l5_label_map(
+    src_path: &Path,
+    labels: &[u32],
+    w: usize,
+    h: usize,
+    tag: &str,
+) -> Result<(), image::ImageError> {
+    if w == 0 || h == 0 {
+        return Ok(());
+    }
+    if labels.len() < w * h {
+        return Ok(());
+    }
+    let mut img = image::RgbaImage::new(w as u32, h as u32);
+    for y in 0..h {
+        for x in 0..w {
+            let idx = y * w + x;
+            let label = labels[idx];
+            let v = if label == u32::MAX {
+                0u8
+            } else {
+                ((label.wrapping_mul(2654435761u32)) >> 24) as u8
+            };
+            img.put_pixel(x as u32, y as u32, Rgba([v, v, v, 255]));
+        }
+    }
+    fs::create_dir_all(SAVE_DIR).map_err(image::ImageError::IoError)?;
+    let time = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis();
+    let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+    img.save(Path::new(SAVE_DIR).join(format!("{}_l5_labels_{}_{}.png", stem, tag, time)))?;
     Ok(())
 }
