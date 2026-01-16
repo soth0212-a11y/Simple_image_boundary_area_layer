@@ -29,10 +29,11 @@ pub fn build_l1_pipelines(device: &wgpu::Device, shader_module: wgpu::ShaderModu
             wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: true }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
-            wgpu::BindGroupLayoutEntry { binding: 6, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 6, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 7, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
         ],
     });
 
@@ -118,6 +119,7 @@ pub fn dispatch_l1(
     pipelines: &L1Pipelines,
     bufs: &L1Buffers,
     cell_rgb: &wgpu::Buffer,
+    s_active: &wgpu::Buffer,
     edge4_in: &wgpu::Buffer,
     th: u32,
     iters: u32,
@@ -131,11 +133,12 @@ pub fn dispatch_l1(
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: cell_rgb.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: edge4_in.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: bufs.plane_b.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: bufs.plane_a.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: bufs.edge4_out.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: bufs.stop4_out.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 6, resource: bufs.params0.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 2, resource: s_active.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 3, resource: bufs.plane_b.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 4, resource: bufs.plane_a.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: bufs.edge4_out.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 6, resource: bufs.stop4_out.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 7, resource: bufs.params0.as_entire_binding() },
         ],
     });
 
@@ -145,11 +148,12 @@ pub fn dispatch_l1(
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: cell_rgb.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: edge4_in.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: bufs.plane_a.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: bufs.plane_b.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: bufs.edge4_out.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: bufs.stop4_out.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 6, resource: bufs.params0.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 2, resource: s_active.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 3, resource: bufs.plane_a.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 4, resource: bufs.plane_b.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: bufs.edge4_out.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 6, resource: bufs.stop4_out.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 7, resource: bufs.params0.as_entire_binding() },
         ],
     });
     let bg_prop_ba = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -158,11 +162,12 @@ pub fn dispatch_l1(
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: cell_rgb.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: edge4_in.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 2, resource: bufs.plane_b.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 3, resource: bufs.plane_a.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 4, resource: bufs.edge4_out.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 5, resource: bufs.stop4_out.as_entire_binding() },
-            wgpu::BindGroupEntry { binding: 6, resource: bufs.params0.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 2, resource: s_active.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 3, resource: bufs.plane_b.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 4, resource: bufs.plane_a.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: bufs.edge4_out.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 6, resource: bufs.stop4_out.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 7, resource: bufs.params0.as_entire_binding() },
         ],
     });
 

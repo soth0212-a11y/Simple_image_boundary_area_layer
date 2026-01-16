@@ -38,6 +38,7 @@ pub struct Layer0Outputs {
     pub packed: wgpu::Buffer,
     pub cell_rgb: wgpu::Buffer,
     pub edge4: wgpu::Buffer,
+    pub s_active: wgpu::Buffer,
 }
 
 #[repr(C)]
@@ -90,6 +91,7 @@ pub fn layer0_init(device: &wgpu::Device, shader_module: wgpu::ShaderModule) -> 
             wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 3, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
             wgpu::BindGroupLayoutEntry { binding: 4, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            wgpu::BindGroupLayoutEntry { binding: 5, visibility: wgpu::ShaderStages::COMPUTE, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Storage { read_only: false }, has_dynamic_offset: false, min_binding_size: None }, count: None },
         ][..],
     });
     let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: None, bind_group_layouts: &[&bindgroup_layout], push_constant_ranges: &[][..] });
@@ -141,6 +143,12 @@ pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::Textu
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
+    let s_active = device.create_buffer(&wgpu::BufferDescriptor {
+        label: Some("layer0_s_active"),
+        size: cell_size,
+        usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+        mapped_at_creation: false,
+    });
     let cfg = config::get();
     let info_buf_data = [
         img_info.height,
@@ -161,6 +169,7 @@ pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::Textu
             wgpu::BindGroupEntry { binding: 2, resource: out_packed.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 3, resource: cell_rgb.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 4, resource: edge4.as_entire_binding() },
+            wgpu::BindGroupEntry { binding: 5, resource: s_active.as_entire_binding() },
         ][..],
         label: None,
     });
@@ -173,7 +182,7 @@ pub fn layer0(device: &wgpu::Device, queue: &wgpu::Queue, img_view: &wgpu::Textu
         pass.dispatch_workgroups((grid_w + 15) / 16, (grid_h + 15) / 16, 1);
     }
     queue.submit([enc.finish()]);
-    (Layer0Outputs { packed: out_packed, cell_rgb, edge4 }, info)
+    (Layer0Outputs { packed: out_packed, cell_rgb, edge4, s_active }, info)
 }
 
 
@@ -310,6 +319,7 @@ pub fn model(
             l1_pipelines,
             l1_bufs,
             &l0_out.cell_rgb,
+            &l0_out.s_active,
             &l0_out.edge4,
             th,
             iters,
