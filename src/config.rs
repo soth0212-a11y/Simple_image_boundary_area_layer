@@ -12,6 +12,7 @@ pub struct AppConfig {
     pub save_l1_segments: bool,
     pub save_l2_boxes: bool,
     pub save_l3_boxes: bool,
+    pub save_l4_boxes: bool,
     pub log_timing: bool,
     pub l0_edge_th_r: u32,
     pub l0_edge_th_g: u32,
@@ -34,6 +35,18 @@ pub struct AppConfig {
     pub l3_k: u32,
     pub l3_min_area: u32,
     pub l3_overflow_mode: u32,
+
+    pub l4_bin_size: u32,
+    pub l4_neighbor_radius: i32,
+    pub l4_gap_thr: i32,
+    pub l4_color_tol_r: i32,
+    pub l4_color_tol_g: i32,
+    pub l4_color_tol_b: i32,
+    pub l4_enable_area_ratio: bool,
+    pub l4_area_ratio_thr: u32,
+    pub l4_enable_iou: bool,
+    pub l4_iou_num: u32,
+    pub l4_iou_den: u32,
 }
 
 impl Default for AppConfig {
@@ -46,6 +59,7 @@ impl Default for AppConfig {
             save_l1_segments: false,
             save_l2_boxes: false,
             save_l3_boxes: false,
+            save_l4_boxes: false,
             log_timing: false,
             l0_edge_th_r: 15,
             l0_edge_th_g: 15,
@@ -68,6 +82,18 @@ impl Default for AppConfig {
             l3_k: 16,
             l3_min_area: 0,
             l3_overflow_mode: 0,
+
+            l4_bin_size: 64,
+            l4_neighbor_radius: 1,
+            l4_gap_thr: 4,
+            l4_color_tol_r: 4,
+            l4_color_tol_g: 4,
+            l4_color_tol_b: 4,
+            l4_enable_area_ratio: true,
+            l4_area_ratio_thr: 30,
+            l4_enable_iou: true,
+            l4_iou_num: 3,
+            l4_iou_den: 10,
         }
     }
 }
@@ -118,6 +144,7 @@ fn parse_config(text: &str) -> AppConfig {
         let in_layer1 = section.eq_ignore_ascii_case("Layer1");
         let in_layer2 = section.eq_ignore_ascii_case("Layer2");
         let in_layer3 = section.eq_ignore_ascii_case("Layer3");
+        let in_layer4 = section.eq_ignore_ascii_case("Layer4");
         match key {
             "MAX_IMAGES" => {
                 if let Ok(v) = value.parse::<usize>() {
@@ -138,6 +165,7 @@ fn parse_config(text: &str) -> AppConfig {
             "SAVE_L1_SEGMENTS" => cfg.save_l1_segments = parse_bool(value),
             "SAVE_L2_BOXES" => cfg.save_l2_boxes = parse_bool(value),
             "SAVE_L3_BOXES" => cfg.save_l3_boxes = parse_bool(value),
+            "SAVE_L4_BOXES" => cfg.save_l4_boxes = parse_bool(value),
             "LOG_TIMING" => cfg.log_timing = parse_bool(value),
             "L0_EDGE_TH_R" => cfg.l0_edge_th_r = value.parse().unwrap_or(cfg.l0_edge_th_r),
             "L0_EDGE_TH_G" => cfg.l0_edge_th_g = value.parse().unwrap_or(cfg.l0_edge_th_g),
@@ -160,6 +188,17 @@ fn parse_config(text: &str) -> AppConfig {
             "L3_K" => cfg.l3_k = value.parse().unwrap_or(cfg.l3_k),
             "L3_MIN_AREA" => cfg.l3_min_area = value.parse().unwrap_or(cfg.l3_min_area),
             "L3_OVERFLOW_MODE" => cfg.l3_overflow_mode = value.parse().unwrap_or(cfg.l3_overflow_mode),
+            "L4_BIN_SIZE" => cfg.l4_bin_size = value.parse().unwrap_or(cfg.l4_bin_size),
+            "L4_NEIGHBOR_RADIUS" => cfg.l4_neighbor_radius = value.parse().unwrap_or(cfg.l4_neighbor_radius),
+            "L4_GAP_THR" => cfg.l4_gap_thr = value.parse().unwrap_or(cfg.l4_gap_thr),
+            "L4_COLOR_TOL_R" => cfg.l4_color_tol_r = value.parse().unwrap_or(cfg.l4_color_tol_r),
+            "L4_COLOR_TOL_G" => cfg.l4_color_tol_g = value.parse().unwrap_or(cfg.l4_color_tol_g),
+            "L4_COLOR_TOL_B" => cfg.l4_color_tol_b = value.parse().unwrap_or(cfg.l4_color_tol_b),
+            "L4_ENABLE_AREA_RATIO" => cfg.l4_enable_area_ratio = parse_bool(value),
+            "L4_AREA_RATIO_THR" => cfg.l4_area_ratio_thr = value.parse().unwrap_or(cfg.l4_area_ratio_thr),
+            "L4_ENABLE_IOU" => cfg.l4_enable_iou = parse_bool(value),
+            "L4_IOU_NUM" => cfg.l4_iou_num = value.parse().unwrap_or(cfg.l4_iou_num),
+            "L4_IOU_DEN" => cfg.l4_iou_den = value.parse().unwrap_or(cfg.l4_iou_den),
             _ => {
                 if in_layer0 {
                     match key_lower.as_str() {
@@ -202,6 +241,22 @@ fn parse_config(text: &str) -> AppConfig {
                         _ => {}
                     }
                 }
+                if in_layer4 {
+                    match key_lower.as_str() {
+                        "bin_size" => cfg.l4_bin_size = value.parse().unwrap_or(cfg.l4_bin_size),
+                        "neighbor_radius" => cfg.l4_neighbor_radius = value.parse().unwrap_or(cfg.l4_neighbor_radius),
+                        "gap_thr" => cfg.l4_gap_thr = value.parse().unwrap_or(cfg.l4_gap_thr),
+                        "color_tol_r" => cfg.l4_color_tol_r = value.parse().unwrap_or(cfg.l4_color_tol_r),
+                        "color_tol_g" => cfg.l4_color_tol_g = value.parse().unwrap_or(cfg.l4_color_tol_g),
+                        "color_tol_b" => cfg.l4_color_tol_b = value.parse().unwrap_or(cfg.l4_color_tol_b),
+                        "enable_area_ratio" => cfg.l4_enable_area_ratio = parse_bool(value),
+                        "area_ratio_thr" => cfg.l4_area_ratio_thr = value.parse().unwrap_or(cfg.l4_area_ratio_thr),
+                        "enable_iou" => cfg.l4_enable_iou = parse_bool(value),
+                        "iou_num" => cfg.l4_iou_num = value.parse().unwrap_or(cfg.l4_iou_num),
+                        "iou_den" => cfg.l4_iou_den = value.parse().unwrap_or(cfg.l4_iou_den),
+                        _ => {}
+                    }
+                }
             }
         }
     }
@@ -236,6 +291,7 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     apply_env_bool("SAVE_L1_SEGMENTS", &mut cfg.save_l1_segments);
     apply_env_bool("SAVE_L2_BOXES", &mut cfg.save_l2_boxes);
     apply_env_bool("SAVE_L3_BOXES", &mut cfg.save_l3_boxes);
+    apply_env_bool("SAVE_L4_BOXES", &mut cfg.save_l4_boxes);
     apply_env_bool("LOG_TIMING", &mut cfg.log_timing);
     apply_env_u32("L0_EDGE_TH_R", &mut cfg.l0_edge_th_r);
     apply_env_u32("L0_EDGE_TH_G", &mut cfg.l0_edge_th_g);
@@ -258,6 +314,18 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     apply_env_u32("L3_K", &mut cfg.l3_k);
     apply_env_u32("L3_MIN_AREA", &mut cfg.l3_min_area);
     apply_env_u32("L3_OVERFLOW_MODE", &mut cfg.l3_overflow_mode);
+
+    apply_env_u32("L4_BIN_SIZE", &mut cfg.l4_bin_size);
+    apply_env_i32("L4_NEIGHBOR_RADIUS", &mut cfg.l4_neighbor_radius);
+    apply_env_i32("L4_GAP_THR", &mut cfg.l4_gap_thr);
+    apply_env_i32("L4_COLOR_TOL_R", &mut cfg.l4_color_tol_r);
+    apply_env_i32("L4_COLOR_TOL_G", &mut cfg.l4_color_tol_g);
+    apply_env_i32("L4_COLOR_TOL_B", &mut cfg.l4_color_tol_b);
+    apply_env_bool("L4_ENABLE_AREA_RATIO", &mut cfg.l4_enable_area_ratio);
+    apply_env_u32("L4_AREA_RATIO_THR", &mut cfg.l4_area_ratio_thr);
+    apply_env_bool("L4_ENABLE_IOU", &mut cfg.l4_enable_iou);
+    apply_env_u32("L4_IOU_NUM", &mut cfg.l4_iou_num);
+    apply_env_u32("L4_IOU_DEN", &mut cfg.l4_iou_den);
 }
 
 fn apply_env_bool(name: &str, target: &mut bool) {
@@ -275,3 +343,10 @@ fn apply_env_u32(name: &str, target: &mut u32) {
 }
 
 // (no i32 env overrides currently)
+fn apply_env_i32(name: &str, target: &mut i32) {
+    if let Ok(v) = env::var(name) {
+        if let Ok(parsed) = v.parse::<i32>() {
+            *target = parsed;
+        }
+    }
+}

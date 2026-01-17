@@ -6,10 +6,12 @@ use wgpu::util::DeviceExt;
 use crate::config;
 use crate::l2_v3_gpu;
 use crate::layer3_tile32;
+use crate::layer4_merge;
 use crate::preprocessing;
 use crate::rle_ccl_gpu;
 use crate::visualization;
 use crate::visualization_l3_tile32;
+use crate::visualization_l4;
 
 pub struct Layer0Outputs {
     pub packed: wgpu::Buffer,
@@ -499,7 +501,8 @@ pub fn model(
     }
 
     let mut l3_info: Option<(Duration, u32)> = None;
-    if cfg.save_l3_boxes || cfg.log_timing {
+    let mut l3_out_boxes: Option<Vec<rle_ccl_gpu::OutBox>> = None;
+    if cfg.save_l3_boxes || cfg.save_l4_boxes || cfg.log_timing {
         if let Some(l2_bufs) = l2_buffers.as_ref() {
             let box_count = l2_boxes.len() as u32;
             if box_count != 0 {
@@ -533,10 +536,11 @@ pub fn model(
                         cfg,
                     );
                     l3_info = Some((l3_start.elapsed(), out_boxes.len() as u32));
+                    l3_out_boxes = Some(out_boxes);
                     if cfg.save_l3_boxes {
                         let _ = visualization_l3_tile32::save_l3_tile32_overlay(
                             src_path,
-                            &out_boxes,
+                            l3_out_boxes.as_deref().unwrap_or(&[]),
                             width as usize,
                             height as usize,
                             "l3_tile32",
@@ -544,6 +548,32 @@ pub fn model(
                     }
                 }
             }
+        }
+    }
+
+    if cfg.save_l4_boxes {
+        if let Some(l3_boxes) = l3_out_boxes.as_deref() {
+            let l4_cfg = layer4_merge::L4MergeCfg {
+                bin_size: cfg.l4_bin_size,
+                neighbor_radius: cfg.l4_neighbor_radius,
+                gap_thr: cfg.l4_gap_thr,
+                color_tol_r: cfg.l4_color_tol_r,
+                color_tol_g: cfg.l4_color_tol_g,
+                color_tol_b: cfg.l4_color_tol_b,
+                enable_area_ratio: cfg.l4_enable_area_ratio,
+                area_ratio_thr: cfg.l4_area_ratio_thr,
+                enable_iou: cfg.l4_enable_iou,
+                iou_num: cfg.l4_iou_num,
+                iou_den: cfg.l4_iou_den,
+            };
+            let l4_boxes = layer4_merge::l4_merge_final(l3_boxes, &l4_cfg);
+            let _ = visualization_l4::save_l4_overlay(
+                src_path,
+                &l4_boxes,
+                width as usize,
+                height as usize,
+                "l4",
+            );
         }
     }
 
