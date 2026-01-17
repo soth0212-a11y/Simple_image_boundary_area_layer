@@ -6,9 +6,9 @@
 @group(0) @binding(5) var<storage, read_write> output_s_active: array<u32>;
 @group(0) @binding(6) var<storage, read_write> output_color565: array<u32>;
 
-const EDGE_TH_R: i32 = 15;
-const EDGE_TH_G: i32 = 15;
-const EDGE_TH_B: i32 = 20;
+const EDGE_TH_R: i32 = 5;
+const EDGE_TH_G: i32 = 5;
+const EDGE_TH_B: i32 = 10;
 
 fn quantize_rgb565(c: vec3<i32>) -> vec3<i32> {
     let r = (c.x >> 3) & 31;

@@ -2,8 +2,9 @@ use std::fs;
 
 mod config;
 mod gpu;
-mod layer3_cpu;
 mod l2_v3_gpu;
+mod layer3_tile32;
+mod visualization_l3_tile32;
 mod visualization;
 mod model;
 mod preprocessing;
@@ -22,6 +23,10 @@ fn main() -> std::io::Result<()> {
     let l2_reduce_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_v3_group_reduce.wgsl"));
     let l2_expand_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_v3_expand.wgsl"));
     let l2_emit_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer2_v3_emit.wgsl"));
+    let l3_clear_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer3_tile32_clear.wgsl"));
+    let l3_accum_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer3_tile32_accumulate.wgsl"));
+    let l3_emit_shader = device.create_shader_module(wgpu::include_wgsl!("./wgsl/layer3_tile32_emit.wgsl"));
+
     let l1_rle_pipelines = rle_ccl_gpu::build_l1_rle_pipelines(
         &device,
         l1_count_shader,
@@ -34,8 +39,10 @@ fn main() -> std::io::Result<()> {
         l2_expand_shader,
         l2_emit_shader,
     );
+    let l3_tile32_pipelines = layer3_tile32::build_l3_tile32_pipelines(&device, l3_clear_shader, l3_accum_shader, l3_emit_shader);
     let mut l1_rle_buffers: Option<rle_ccl_gpu::L1RleBuffers> = None;
     let mut l2_v3_buffers: Option<l2_v3_gpu::L2v3Buffers> = None;
+    let mut l3_tile32_buffers: Option<layer3_tile32::L3Tile32Buffers> = None;
 
     let cfg = config::init();
     let images_dir = match cfg.images_dir.clone() {
@@ -65,6 +72,8 @@ fn main() -> std::io::Result<()> {
             &mut l1_rle_buffers,
             &l2_v3_pipelines,
             &mut l2_v3_buffers,
+            &l3_tile32_pipelines,
+            &mut l3_tile32_buffers,
             &path,
         );
         return Ok(());
@@ -84,21 +93,23 @@ fn main() -> std::io::Result<()> {
                                 continue;
                             }
                         };
-                        model::model(
-                            &device,
-                            &queue,
-                            img_buffer,
-                            img_info,
-                            &l0_values,
-                            &l1_rle_pipelines,
-                            &mut l1_rle_buffers,
-                            &l2_v3_pipelines,
-                            &mut l2_v3_buffers,
-                            &path,
-                        );
-                        processed += 1;
-                        if processed >= max_images {
-                            break;
+            model::model(
+                &device,
+                &queue,
+                img_buffer,
+                img_info,
+                &l0_values,
+                &l1_rle_pipelines,
+                &mut l1_rle_buffers,
+                &l2_v3_pipelines,
+                &mut l2_v3_buffers,
+                &l3_tile32_pipelines,
+                &mut l3_tile32_buffers,
+                &path,
+            );
+            processed += 1;
+            if processed >= max_images {
+                break;
                         }
                     }
                 }

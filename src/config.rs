@@ -31,17 +31,9 @@ pub struct AppConfig {
     pub l2_band_r_shift: u32,
     pub l2_band_g_shift: u32,
     pub l2_band_b_shift: u32,
-    pub l3_min_w: u32,
-    pub l3_min_h: u32,
-    pub l3_min_area: u64,
-    pub l3_color_tol: u32,
-    pub l3_iou_th: f32,
-    pub l3_gap_x_th: u32,
-    pub l3_gap_y_th: u32,
-    pub l3_overlap_x_th: u32,
-    pub l3_overlap_y_th: u32,
-    pub l3_contain_ratio_th: f32,
-    pub l3_nms_iou_th: f32,
+    pub l3_k: u32,
+    pub l3_min_area: u32,
+    pub l3_overflow_mode: u32,
 }
 
 impl Default for AppConfig {
@@ -73,17 +65,9 @@ impl Default for AppConfig {
             l2_band_r_shift: 2,
             l2_band_g_shift: 3,
             l2_band_b_shift: 2,
-            l3_min_w: 2,
-            l3_min_h: 2,
-            l3_min_area: 16,
-            l3_color_tol: 1,
-            l3_iou_th: 0.5,
-            l3_gap_x_th: 2,
-            l3_gap_y_th: 2,
-            l3_overlap_x_th: 1,
-            l3_overlap_y_th: 1,
-            l3_contain_ratio_th: 0.90,
-            l3_nms_iou_th: 0.85,
+            l3_k: 16,
+            l3_min_area: 0,
+            l3_overflow_mode: 0,
         }
     }
 }
@@ -173,17 +157,9 @@ fn parse_config(text: &str) -> AppConfig {
             "L2_BAND_R_SHIFT" => cfg.l2_band_r_shift = value.parse().unwrap_or(cfg.l2_band_r_shift),
             "L2_BAND_G_SHIFT" => cfg.l2_band_g_shift = value.parse().unwrap_or(cfg.l2_band_g_shift),
             "L2_BAND_B_SHIFT" => cfg.l2_band_b_shift = value.parse().unwrap_or(cfg.l2_band_b_shift),
-            "L3_MIN_W" => cfg.l3_min_w = value.parse().unwrap_or(cfg.l3_min_w),
-            "L3_MIN_H" => cfg.l3_min_h = value.parse().unwrap_or(cfg.l3_min_h),
+            "L3_K" => cfg.l3_k = value.parse().unwrap_or(cfg.l3_k),
             "L3_MIN_AREA" => cfg.l3_min_area = value.parse().unwrap_or(cfg.l3_min_area),
-            "L3_COLOR_TOL" => cfg.l3_color_tol = value.parse().unwrap_or(cfg.l3_color_tol),
-            "L3_IOU_TH" => cfg.l3_iou_th = value.parse().unwrap_or(cfg.l3_iou_th),
-            "L3_GAP_X_TH" => cfg.l3_gap_x_th = value.parse().unwrap_or(cfg.l3_gap_x_th),
-            "L3_GAP_Y_TH" => cfg.l3_gap_y_th = value.parse().unwrap_or(cfg.l3_gap_y_th),
-            "L3_OVERLAP_X_TH" => cfg.l3_overlap_x_th = value.parse().unwrap_or(cfg.l3_overlap_x_th),
-            "L3_OVERLAP_Y_TH" => cfg.l3_overlap_y_th = value.parse().unwrap_or(cfg.l3_overlap_y_th),
-            "L3_CONTAIN_RATIO_TH" => cfg.l3_contain_ratio_th = value.parse().unwrap_or(cfg.l3_contain_ratio_th),
-            "L3_NMS_IOU_TH" => cfg.l3_nms_iou_th = value.parse().unwrap_or(cfg.l3_nms_iou_th),
+            "L3_OVERFLOW_MODE" => cfg.l3_overflow_mode = value.parse().unwrap_or(cfg.l3_overflow_mode),
             _ => {
                 if in_layer0 {
                     match key_lower.as_str() {
@@ -220,17 +196,9 @@ fn parse_config(text: &str) -> AppConfig {
                 }
                 if in_layer3 {
                     match key_lower.as_str() {
-                        "min_w" => cfg.l3_min_w = value.parse().unwrap_or(cfg.l3_min_w),
-                        "min_h" => cfg.l3_min_h = value.parse().unwrap_or(cfg.l3_min_h),
+                        "k" => cfg.l3_k = value.parse().unwrap_or(cfg.l3_k),
                         "min_area" => cfg.l3_min_area = value.parse().unwrap_or(cfg.l3_min_area),
-                        "color_tol" => cfg.l3_color_tol = value.parse().unwrap_or(cfg.l3_color_tol),
-                        "iou_th" => cfg.l3_iou_th = value.parse().unwrap_or(cfg.l3_iou_th),
-                        "gap_x_th" => cfg.l3_gap_x_th = value.parse().unwrap_or(cfg.l3_gap_x_th),
-                        "gap_y_th" => cfg.l3_gap_y_th = value.parse().unwrap_or(cfg.l3_gap_y_th),
-                        "overlap_x_th" => cfg.l3_overlap_x_th = value.parse().unwrap_or(cfg.l3_overlap_x_th),
-                        "overlap_y_th" => cfg.l3_overlap_y_th = value.parse().unwrap_or(cfg.l3_overlap_y_th),
-                        "contain_ratio_th" => cfg.l3_contain_ratio_th = value.parse().unwrap_or(cfg.l3_contain_ratio_th),
-                        "nms_iou_th" => cfg.l3_nms_iou_th = value.parse().unwrap_or(cfg.l3_nms_iou_th),
+                        "overflow_mode" => cfg.l3_overflow_mode = value.parse().unwrap_or(cfg.l3_overflow_mode),
                         _ => {}
                     }
                 }
@@ -287,17 +255,9 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     apply_env_u32("L2_BAND_R_SHIFT", &mut cfg.l2_band_r_shift);
     apply_env_u32("L2_BAND_G_SHIFT", &mut cfg.l2_band_g_shift);
     apply_env_u32("L2_BAND_B_SHIFT", &mut cfg.l2_band_b_shift);
-    apply_env_u32("L3_MIN_W", &mut cfg.l3_min_w);
-    apply_env_u32("L3_MIN_H", &mut cfg.l3_min_h);
-    apply_env_u64("L3_MIN_AREA", &mut cfg.l3_min_area);
-    apply_env_u32("L3_COLOR_TOL", &mut cfg.l3_color_tol);
-    apply_env_f32("L3_IOU_TH", &mut cfg.l3_iou_th);
-    apply_env_u32("L3_GAP_X_TH", &mut cfg.l3_gap_x_th);
-    apply_env_u32("L3_GAP_Y_TH", &mut cfg.l3_gap_y_th);
-    apply_env_u32("L3_OVERLAP_X_TH", &mut cfg.l3_overlap_x_th);
-    apply_env_u32("L3_OVERLAP_Y_TH", &mut cfg.l3_overlap_y_th);
-    apply_env_f32("L3_CONTAIN_RATIO_TH", &mut cfg.l3_contain_ratio_th);
-    apply_env_f32("L3_NMS_IOU_TH", &mut cfg.l3_nms_iou_th);
+    apply_env_u32("L3_K", &mut cfg.l3_k);
+    apply_env_u32("L3_MIN_AREA", &mut cfg.l3_min_area);
+    apply_env_u32("L3_OVERFLOW_MODE", &mut cfg.l3_overflow_mode);
 }
 
 fn apply_env_bool(name: &str, target: &mut bool) {
@@ -314,18 +274,4 @@ fn apply_env_u32(name: &str, target: &mut u32) {
     }
 }
 
-fn apply_env_u64(name: &str, target: &mut u64) {
-    if let Ok(v) = env::var(name) {
-        if let Ok(parsed) = v.parse::<u64>() {
-            *target = parsed;
-        }
-    }
-}
-
-fn apply_env_f32(name: &str, target: &mut f32) {
-    if let Ok(v) = env::var(name) {
-        if let Ok(parsed) = v.parse::<f32>() {
-            *target = parsed;
-        }
-    }
-}
+// (no i32 env overrides currently)

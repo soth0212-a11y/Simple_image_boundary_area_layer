@@ -1,0 +1,825 @@
+image: 000000147328 (640x480)
+layer0: 1.765846ms
+layer1: 4.977608ms
+layer2: 8.101054ms
+  l2_clear: 3.816097ms
+  l2_group_reduce: 764.446µs
+  l2_expand: 2.239255ms
+  l2_emit: 618.822µs
+layer3: 1.834555ms (out=4705)
+total: 18.22697ms
+
+image: 000000414738 (640x573)
+layer0: 1.996349ms
+layer1: 2.225199ms
+layer2: 13.879095ms
+  l2_clear: 5.847571ms
+  l2_group_reduce: 288.903µs
+  l2_expand: 2.181286ms
+  l2_emit: 558.589µs
+layer3: 1.454471ms (out=2785)
+total: 20.372909ms
+
+image: 000000281563 (500x332)
+layer0: 497.966µs
+layer1: 2.139428ms
+layer2: 8.539437ms
+  l2_clear: 2.196014ms
+  l2_group_reduce: 322.426µs
+  l2_expand: 1.559589ms
+  l2_emit: 401.775µs
+layer3: 1.667101ms (out=2524)
+total: 14.134655ms
+
+image: 000000063879 (640x365)
+layer0: 550.003µs
+layer1: 1.873358ms
+layer2: 9.315224ms
+  l2_clear: 2.991287ms
+  l2_group_reduce: 385.914µs
+  l2_expand: 1.934192ms
+  l2_emit: 518.995µs
+layer3: 1.733936ms (out=2853)
+total: 14.48371ms
+
+image: 000000531349 (640x640)
+layer0: 2.093571ms
+layer1: 3.851914ms
+layer2: 11.959399ms
+  l2_clear: 5.129973ms
+  l2_group_reduce: 637.477µs
+  l2_expand: 3.40787ms
+  l2_emit: 902.424µs
+layer3: 2.131553ms (out=5069)
+total: 21.323885ms
+
+image: 000000340329 (640x480)
+layer0: 1.290805ms
+layer1: 3.61568ms
+layer2: 15.086752ms
+  l2_clear: 5.261782ms
+  l2_group_reduce: 995.63µs
+  l2_expand: 3.306089ms
+  l2_emit: 961.847µs
+layer3: 2.312703ms (out=4155)
+total: 23.894023ms
+
+image: 000000182236 (640x480)
+layer0: 932.802µs
+layer1: 3.556109ms
+layer2: 7.979135ms
+  l2_clear: 3.689278ms
+  l2_group_reduce: 434.877µs
+  l2_expand: 2.074887ms
+  l2_emit: 535.506µs
+layer3: 1.507521ms (out=3306)
+total: 15.007814ms
+
+image: 000000326820 (548x640)
+layer0: 867.88µs
+layer1: 2.900917ms
+layer2: 17.904434ms
+  l2_clear: 5.669988ms
+  l2_group_reduce: 531.889µs
+  l2_expand: 4.901646ms
+  l2_emit: 1.226212ms
+layer3: 5.801225ms (out=2909)
+total: 31.839524ms
+
+image: 000000149364 (640x410)
+layer0: 1.400199ms
+layer1: 4.205838ms
+layer2: 10.238438ms
+  l2_clear: 4.112623ms
+  l2_group_reduce: 922.753µs
+  l2_expand: 2.808404ms
+  l2_emit: 752.082µs
+layer3: 1.804779ms (out=4115)
+total: 18.979623ms
+
+image: 000000166598 (480x640)
+layer0: 1.35252ms
+layer1: 2.365763ms
+layer2: 13.346514ms
+  l2_clear: 5.32493ms
+  l2_group_reduce: 541.437µs
+  l2_expand: 2.362607ms
+  l2_emit: 650.482µs
+layer3: 1.99136ms (out=2860)
+total: 20.220573ms
+
+image: 000000424792 (640x487)
+layer0: 892.606µs
+layer1: 2.965028ms
+layer2: 8.6423ms
+  l2_clear: 4.146287ms
+  l2_group_reduce: 341.932µs
+  l2_expand: 1.782338ms
+  l2_emit: 464.031µs
+layer3: 1.535794ms (out=2697)
+total: 14.971917ms
+
+image: 000000178388 (640x480)
+layer0: 1.329236ms
+layer1: 3.228112ms
+layer2: 12.877063ms
+  l2_clear: 5.05868ms
+  l2_group_reduce: 430.999µs
+  l2_expand: 2.162842ms
+  l2_emit: 516.951µs
+layer3: 2.259954ms (out=3256)
+total: 21.32106ms
+
+image: 000000568154 (427x640)
+layer0: 1.250147ms
+layer1: 3.058905ms
+layer2: 6.513502ms
+  l2_clear: 3.290399ms
+  l2_group_reduce: 378.15µs
+  l2_expand: 1.980259ms
+  l2_emit: 598.193µs
+layer3: 2.343371ms (out=3959)
+total: 15.011481ms
+
+image: 000000268150 (640x480)
+layer0: 1.325018ms
+layer1: 2.777586ms
+layer2: 14.543463ms
+  l2_clear: 5.089648ms
+  l2_group_reduce: 783.321µs
+  l2_expand: 3.279439ms
+  l2_emit: 1.036657ms
+layer3: 1.747291ms (out=4291)
+total: 21.434634ms
+
+image: 000000138473 (427x640)
+layer0: 967.497µs
+layer1: 2.895347ms
+layer2: 6.164968ms
+  l2_clear: 3.331186ms
+  l2_group_reduce: 330.37µs
+  l2_expand: 1.728967ms
+  l2_emit: 471.756µs
+layer3: 1.570118ms (out=2513)
+total: 12.819104ms
+
+image: 000000382699 (500x375)
+layer0: 874.192µs
+layer1: 2.25261ms
+layer2: 11.434604ms
+  l2_clear: 3.35475ms
+  l2_group_reduce: 797.107µs
+  l2_expand: 3.052051ms
+  l2_emit: 596.389µs
+layer3: 1.659817ms (out=3001)
+total: 17.687878ms
+
+image: 000000493952 (640x427)
+layer0: 728.779µs
+layer1: 4.389373ms
+layer2: 9.573358ms
+  l2_clear: 3.736878ms
+  l2_group_reduce: 1.044813ms
+  l2_expand: 2.762318ms
+  l2_emit: 714.171µs
+layer3: 2.028088ms (out=4460)
+total: 18.324523ms
+
+image: 000000348522 (640x426)
+layer0: 699.484µs
+layer1: 2.387063ms
+layer2: 11.300893ms
+  l2_clear: 4.461759ms
+  l2_group_reduce: 522.281µs
+  l2_expand: 1.802725ms
+  l2_emit: 448.833µs
+layer3: 1.592341ms (out=3214)
+total: 17.004624ms
+
+image: 000000066862 (640x480)
+layer0: 1.157844ms
+layer1: 2.35346ms
+layer2: 6.527819ms
+  l2_clear: 3.756505ms
+  l2_group_reduce: 235.522µs
+  l2_expand: 1.509575ms
+  l2_emit: 402.837µs
+layer3: 1.324176ms (out=1571)
+total: 12.296192ms
+
+image: 000000024457 (640x429)
+layer0: 736.143µs
+layer1: 2.179453ms
+layer2: 11.644187ms
+  l2_clear: 4.695829ms
+  l2_group_reduce: 482.316µs
+  l2_expand: 2.057905ms
+  l2_emit: 517.452µs
+layer3: 1.698089ms (out=2912)
+total: 17.319646ms
+
+image: 000000160437 (640x480)
+layer0: 1.211535ms
+layer1: 4.378102ms
+layer2: 9.244901ms
+  l2_clear: 3.824773ms
+  l2_group_reduce: 625.605µs
+  l2_expand: 2.228585ms
+  l2_emit: 641.876µs
+layer3: 1.941456ms (out=4333)
+total: 18.285269ms
+
+image: 000000487414 (640x425)
+layer0: 1.331651ms
+layer1: 3.249022ms
+layer2: 14.023706ms
+  l2_clear: 5.051126ms
+  l2_group_reduce: 702.389µs
+  l2_expand: 3.433649ms
+  l2_emit: 738.688µs
+layer3: 1.983735ms (out=4083)
+total: 21.735218ms
+
+image: 000000329541 (480x640)
+layer0: 749.869µs
+layer1: 2.69944ms
+layer2: 8.017407ms
+  l2_clear: 3.728151ms
+  l2_group_reduce: 477.025µs
+  l2_expand: 2.314026ms
+  l2_emit: 502.103µs
+layer3: 1.625072ms (out=4273)
+total: 14.157267ms
+
+image: 000000092064 (640x427)
+layer0: 664.407µs
+layer1: 2.779991ms
+layer2: 12.222123ms
+  l2_clear: 4.733119ms
+  l2_group_reduce: 788.812µs
+  l2_expand: 2.136472ms
+  l2_emit: 538.511µs
+layer3: 1.594644ms (out=3778)
+total: 18.358396ms
+
+image: 000000281262 (640x478)
+layer0: 1.28884ms
+layer1: 2.730027ms
+layer2: 7.064016ms
+  l2_clear: 3.667518ms
+  l2_group_reduce: 402.386µs
+  l2_expand: 1.808155ms
+  l2_emit: 450.657µs
+layer3: 1.669765ms (out=2749)
+total: 13.718342ms
+
+image: 000000145337 (640x480)
+layer0: 1.209602ms
+layer1: 2.920255ms
+layer2: 13.020652ms
+  l2_clear: 4.921592ms
+  l2_group_reduce: 403.808µs
+  l2_expand: 2.404786ms
+  l2_emit: 574.839µs
+layer3: 1.655308ms (out=4447)
+total: 19.713742ms
+
+image: 000000372147 (427x640)
+layer0: 1.117188ms
+layer1: 3.062511ms
+layer2: 6.191538ms
+  l2_clear: 3.520571ms
+  l2_group_reduce: 305.594µs
+  l2_expand: 1.643406ms
+  l2_emit: 442.521µs
+layer3: 1.763212ms (out=3355)
+total: 13.21124ms
+
+image: 000000559184 (640x597)
+layer0: 1.620834ms
+layer1: 3.548194ms
+layer2: 22.160857ms
+  l2_clear: 8.139987ms
+  l2_group_reduce: 542.529µs
+  l2_expand: 3.739593ms
+  l2_emit: 940.046µs
+layer3: 2.199331ms (out=2878)
+total: 31.3207ms
+
+image: 000000511141 (640x426)
+layer0: 1.260066ms
+layer1: 3.635868ms
+layer2: 8.34406ms
+  l2_clear: 3.858126ms
+  l2_group_reduce: 492.725µs
+  l2_expand: 2.445402ms
+  l2_emit: 570.511µs
+layer3: 1.824947ms (out=3539)
+total: 16.260727ms
+
+image: 000000228974 (640x425)
+layer0: 1.245409ms
+layer1: 2.943729ms
+layer2: 13.781281ms
+  l2_clear: 4.746223ms
+  l2_group_reduce: 668.295µs
+  l2_expand: 1.964129ms
+  l2_emit: 694.524µs
+layer3: 1.737403ms (out=3380)
+total: 21.322974ms
+
+image: 000000092658 (426x640)
+layer0: 1.153235ms
+layer1: 3.232591ms
+layer2: 7.251749ms
+  l2_clear: 3.325496ms
+  l2_group_reduce: 564.47µs
+  l2_expand: 2.382354ms
+  l2_emit: 650.391µs
+layer3: 1.673763ms (out=4280)
+total: 14.404732ms
+
+image: 000000528299 (640x480)
+layer0: 707.679µs
+layer1: 2.17806ms
+layer2: 14.200147ms
+  l2_clear: 5.057728ms
+  l2_group_reduce: 634.521µs
+  l2_expand: 2.536975ms
+  l2_emit: 761.38µs
+layer3: 1.436718ms (out=3790)
+total: 19.514438ms
+
+image: 000000494811 (640x360)
+layer0: 577.004µs
+layer1: 2.039049ms
+layer2: 9.327637ms
+  l2_clear: 3.082309ms
+  l2_group_reduce: 436.68µs
+  l2_expand: 1.986351ms
+  l2_emit: 501.241µs
+layer3: 1.330739ms (out=2555)
+total: 14.29217ms
+
+image: 000000063873 (640x551)
+layer0: 1.095938ms
+layer1: 4.852062ms
+layer2: 10.885753ms
+  l2_clear: 4.17447ms
+  l2_group_reduce: 900.16µs
+  l2_expand: 2.942165ms
+  l2_emit: 756.591µs
+layer3: 2.01304ms (out=5047)
+total: 20.150863ms
+
+image: 000000156073 (640x480)
+layer0: 1.145661ms
+layer1: 3.10475ms
+layer2: 13.321648ms
+  l2_clear: 4.835822ms
+  l2_group_reduce: 578.456µs
+  l2_expand: 3.240675ms
+  l2_emit: 697.479µs
+layer3: 1.516178ms (out=3751)
+total: 19.94203ms
+
+image: 000000406342 (425x640)
+layer0: 675.588µs
+layer1: 3.158031ms
+layer2: 6.630051ms
+  l2_clear: 3.277796ms
+  l2_group_reduce: 571.934µs
+  l2_expand: 2.014633ms
+  l2_emit: 529.234µs
+layer3: 1.452297ms (out=3793)
+total: 13.000304ms
+
+image: 000000126288 (481x640)
+layer0: 2.286123ms
+layer1: 3.869827ms
+layer2: 12.972902ms
+  l2_clear: 4.878492ms
+  l2_group_reduce: 1.104454ms
+  l2_expand: 2.166649ms
+  l2_emit: 626.496µs
+layer3: 1.592601ms (out=4692)
+total: 21.570439ms
+
+image: 000000550547 (640x480)
+layer0: 1.389149ms
+layer1: 3.01964ms
+layer2: 8.928819ms
+  l2_clear: 3.895335ms
+  l2_group_reduce: 492.996µs
+  l2_expand: 2.140029ms
+  l2_emit: 527.621µs
+layer3: 1.578885ms (out=4380)
+total: 16.03337ms
+
+image: 000000420414 (640x480)
+layer0: 1.154007ms
+layer1: 2.693729ms
+layer2: 12.246609ms
+  l2_clear: 4.773424ms
+  l2_group_reduce: 618.06µs
+  l2_expand: 2.105003ms
+  l2_emit: 556.825µs
+layer3: 1.548979ms (out=2917)
+total: 18.676144ms
+
+image: 000000240755 (640x480)
+layer0: 1.237744ms
+layer1: 1.833634ms
+layer2: 6.322944ms
+  l2_clear: 3.559905ms
+  l2_group_reduce: 106.25µs
+  l2_expand: 1.385302ms
+  l2_emit: 355.728µs
+layer3: 1.113431ms (out=955)
+total: 11.183492ms
+
+image: 000000218357 (480x640)
+layer0: 1.130693ms
+layer1: 1.98585ms
+layer2: 11.138668ms
+  l2_clear: 4.924709ms
+  l2_group_reduce: 231.725µs
+  l2_expand: 1.971032ms
+  l2_emit: 445.817µs
+layer3: 1.45365ms (out=2665)
+total: 16.530123ms
+
+image: 000000209073 (480x640)
+layer0: 1.30454ms
+layer1: 2.288056ms
+layer2: 6.705523ms
+  l2_clear: 3.826166ms
+  l2_group_reduce: 365.175µs
+  l2_expand: 1.526667ms
+  l2_emit: 423.015µs
+layer3: 1.680857ms (out=3474)
+total: 12.986509ms
+
+image: 000000250607 (480x640)
+layer0: 1.274663ms
+layer1: 2.382524ms
+layer2: 12.108369ms
+  l2_clear: 5.139421ms
+  l2_group_reduce: 523.583µs
+  l2_expand: 1.799399ms
+  l2_emit: 476.324µs
+layer3: 1.601267ms (out=3342)
+total: 18.33863ms
+
+image: 000000327818 (640x427)
+layer0: 1.195065ms
+layer1: 2.165777ms
+layer2: 6.414877ms
+  l2_clear: 3.394666ms
+  l2_group_reduce: 297.378µs
+  l2_expand: 1.908664ms
+  l2_emit: 520.908µs
+layer3: 1.85822ms (out=3075)
+total: 12.865652ms
+
+image: 000000175111 (640x478)
+layer0: 1.100908ms
+layer1: 2.184883ms
+layer2: 12.05525ms
+  l2_clear: 4.851171ms
+  l2_group_reduce: 359.074µs
+  l2_expand: 2.09275ms
+  l2_emit: 458.801µs
+layer3: 1.447599ms (out=2458)
+total: 17.589834ms
+
+image: 000000242755 (464x640)
+layer0: 1.120364ms
+layer1: 2.6357ms
+layer2: 6.769943ms
+  l2_clear: 3.681354ms
+  l2_group_reduce: 216.065µs
+  l2_expand: 1.561131ms
+  l2_emit: 394.13µs
+layer3: 1.497593ms (out=3147)
+total: 12.93389ms
+
+image: 000000236173 (450x350)
+layer0: 485.271µs
+layer1: 1.778259ms
+layer2: 9.23874ms
+  l2_clear: 2.868928ms
+  l2_group_reduce: 468.259µs
+  l2_expand: 1.649377ms
+  l2_emit: 311.806µs
+layer3: 1.273271ms (out=1697)
+total: 13.812309ms
+
+image: 000000460918 (364x640)
+layer0: 1.071592ms
+layer1: 4.167797ms
+layer2: 9.477258ms
+  l2_clear: 3.094482ms
+  l2_group_reduce: 543.03µs
+  l2_expand: 1.98626ms
+  l2_emit: 468.8µs
+layer3: 1.853501ms (out=3516)
+total: 17.684992ms
+
+image: 000000029716 (480x640)
+layer0: 1.337882ms
+layer1: 4.013748ms
+layer2: 9.68041ms
+  l2_clear: 4.110771ms
+  l2_group_reduce: 933.152µs
+  l2_expand: 2.732392ms
+  l2_emit: 763.283µs
+layer3: 2.647753ms (out=4293)
+total: 19.517683ms
+
+image: 000000572289 (640x427)
+layer0: 935.998µs
+layer1: 1.986721ms
+layer2: 11.286806ms
+  l2_clear: 4.508527ms
+  l2_group_reduce: 402.766µs
+  l2_expand: 1.601718ms
+  l2_emit: 436.039µs
+layer3: 1.488194ms (out=2531)
+total: 17.083483ms
+
+image: 000000181356 (500x375)
+layer0: 528.112µs
+layer1: 2.248422ms
+layer2: 8.957562ms
+  l2_clear: 2.512538ms
+  l2_group_reduce: 314.981µs
+  l2_expand: 1.708829ms
+  l2_emit: 399.921µs
+layer3: 1.319508ms (out=2340)
+total: 14.539064ms
+
+image: 000000554271 (427x640)
+layer0: 691.659µs
+layer1: 2.402301ms
+layer2: 6.852909ms
+  l2_clear: 3.486989ms
+  l2_group_reduce: 403.909µs
+  l2_expand: 2.020675ms
+  l2_emit: 504.567µs
+layer3: 1.343242ms (out=2945)
+total: 12.312262ms
+
+image: 000000117770 (480x360)
+layer0: 444.114µs
+layer1: 2.20454ms
+layer2: 7.504082ms
+  l2_clear: 2.792745ms
+  l2_group_reduce: 635.103µs
+  l2_expand: 1.609172ms
+  l2_emit: 330.851µs
+layer3: 1.160489ms (out=2687)
+total: 12.025323ms
+
+image: 000000483760 (640x426)
+layer0: 619.233µs
+layer1: 1.806653ms
+layer2: 5.92648ms
+  l2_clear: 3.282384ms
+  l2_group_reduce: 287.811µs
+  l2_expand: 1.732243ms
+  l2_emit: 426.651µs
+layer3: 1.283671ms (out=3074)
+total: 10.616327ms
+
+image: 000000318929 (640x480)
+layer0: 1.049521ms
+layer1: 3.094311ms
+layer2: 13.047603ms
+  l2_clear: 4.351652ms
+  l2_group_reduce: 365.847µs
+  l2_expand: 2.419744ms
+  l2_emit: 602.631µs
+layer3: 1.578374ms (out=3703)
+total: 19.534345ms
+
+image: 000000265544 (640x640)
+layer0: 1.184905ms
+layer1: 2.844132ms
+layer2: 11.401221ms
+  l2_clear: 4.849107ms
+  l2_group_reduce: 763.033µs
+  l2_expand: 3.226239ms
+  l2_emit: 798.87µs
+layer3: 1.640251ms (out=4237)
+total: 18.05171ms
+
+image: 000000302823 (640x478)
+layer0: 1.005468ms
+layer1: 3.347377ms
+layer2: 13.889805ms
+  l2_clear: 4.762775ms
+  l2_group_reduce: 824.308µs
+  l2_expand: 2.440283ms
+  l2_emit: 642.947µs
+layer3: 1.447028ms (out=4742)
+total: 20.755298ms
+
+image: 000000205477 (640x427)
+layer0: 1.149368ms
+layer1: 2.302564ms
+layer2: 6.068887ms
+  l2_clear: 3.164863ms
+  l2_group_reduce: 338.175µs
+  l2_expand: 1.859132ms
+  l2_emit: 480.242µs
+layer3: 1.550852ms (out=3823)
+total: 12.073584ms
+
+image: 000000353536 (640x443)
+layer0: 1.235891ms
+layer1: 2.995496ms
+layer2: 11.246661ms
+  l2_clear: 4.360769ms
+  l2_group_reduce: 539.393µs
+  l2_expand: 1.741731ms
+  l2_emit: 446.318µs
+layer3: 1.496059ms (out=3967)
+total: 17.692806ms
+
+image: 000000352660 (640x480)
+layer0: 689.084µs
+layer1: 1.957456ms
+layer2: 5.86288ms
+  l2_clear: 3.514791ms
+  l2_group_reduce: 144.451µs
+  l2_expand: 1.371826ms
+  l2_emit: 440.287µs
+layer3: 1.205314ms (out=2550)
+total: 10.368081ms
+
+image: 000000260566 (500x334)
+layer0: 429.797µs
+layer1: 1.268172ms
+layer2: 8.487219ms
+  l2_clear: 2.626382ms
+  l2_group_reduce: 380.404µs
+  l2_expand: 1.644869ms
+  l2_emit: 309.782µs
+layer3: 1.042628ms (out=1746)
+total: 12.488884ms
+
+image: 000000351903 (480x640)
+layer0: 1.228267ms
+layer1: 2.908913ms
+layer2: 7.065248ms
+  l2_clear: 3.386379ms
+  l2_group_reduce: 529.805µs
+  l2_expand: 2.2951ms
+  l2_emit: 578.146µs
+layer3: 1.956975ms (out=4750)
+total: 13.958304ms
+
+image: 000000038226 (640x426)
+layer0: 1.1503ms
+layer1: 2.158734ms
+layer2: 11.428513ms
+  l2_clear: 4.49447ms
+  l2_group_reduce: 480.793µs
+  l2_expand: 2.09853ms
+  l2_emit: 517.111µs
+layer3: 1.552916ms (out=3174)
+total: 17.030994ms
+
+image: 000000096539 (640x480)
+layer0: 719.23µs
+layer1: 3.394726ms
+layer2: 8.907127ms
+  l2_clear: 3.736538ms
+  l2_group_reduce: 584.317µs
+  l2_expand: 2.153164ms
+  l2_emit: 589.427µs
+layer3: 1.814267ms (out=4706)
+total: 16.260326ms
+
+image: 000000580121 (640x354)
+layer0: 909.458µs
+layer1: 3.020693ms
+layer2: 9.571956ms
+  l2_clear: 3.655865ms
+  l2_group_reduce: 901.624µs
+  l2_expand: 2.107598ms
+  l2_emit: 629.071µs
+layer3: 1.503503ms (out=2901)
+total: 15.941298ms
+
+image: 000000340218 (477x558)
+layer0: 1.318486ms
+layer1: 1.832231ms
+layer2: 6.063697ms
+  l2_clear: 3.388022ms
+  l2_group_reduce: 196.098µs
+  l2_expand: 1.621685ms
+  l2_emit: 509.818µs
+layer3: 1.614262ms (out=2731)
+total: 12.082059ms
+
+image: 000000175102 (640x480)
+layer0: 2.373668ms
+layer1: 2.602187ms
+layer2: 12.528969ms
+  l2_clear: 4.445628ms
+  l2_group_reduce: 573.136µs
+  l2_expand: 2.792184ms
+  l2_emit: 595.588µs
+layer3: 1.460503ms (out=3466)
+total: 19.749469ms
+
+image: 000000033300 (427x640)
+layer0: 654.87µs
+layer1: 1.78944ms
+layer2: 5.661822ms
+  l2_clear: 3.135067ms
+  l2_group_reduce: 246.583µs
+  l2_expand: 1.562203ms
+  l2_emit: 419.688µs
+layer3: 1.381645ms (out=2262)
+total: 10.449594ms
+
+image: 000000090488 (640x427)
+layer0: 1.186058ms
+layer1: 3.111464ms
+layer2: 12.216031ms
+  l2_clear: 4.289926ms
+  l2_group_reduce: 867.769µs
+  l2_expand: 2.698328ms
+  l2_emit: 695.707µs
+layer3: 1.731953ms (out=4184)
+total: 19.152949ms
+
+image: 000000155782 (500x375)
+layer0: 454.724µs
+layer1: 1.469079ms
+layer2: 7.576168ms
+  l2_clear: 2.419193ms
+  l2_group_reduce: 313.82µs
+  l2_expand: 1.489146ms
+  l2_emit: 307.508µs
+layer3: 1.139099ms (out=1874)
+total: 11.582481ms
+
+image: 000000568878 (480x640)
+layer0: 1.234789ms
+layer1: 2.150749ms
+layer2: 6.43757ms
+  l2_clear: 3.464025ms
+  l2_group_reduce: 288.662µs
+  l2_expand: 1.754154ms
+  l2_emit: 480.392µs
+layer3: 1.246792ms (out=1887)
+total: 11.812453ms
+
+image: 000000527480 (640x360)
+layer0: 557.206µs
+layer1: 3.316819ms
+layer2: 10.666381ms
+  l2_clear: 3.731287ms
+  l2_group_reduce: 938.533µs
+  l2_expand: 2.07679ms
+  l2_emit: 533.392µs
+layer3: 1.391794ms (out=3720)
+total: 16.926157ms
+
+image: 000000304292 (640x554)
+layer0: 1.552666ms
+layer1: 3.604409ms
+layer2: 10.30893ms
+  l2_clear: 4.165743ms
+  l2_group_reduce: 631.355µs
+  l2_expand: 2.348511ms
+  l2_emit: 650.431µs
+layer3: 1.92219ms (out=5138)
+total: 18.511073ms
+
+image: 000000069121 (450x290)
+layer0: 501.792µs
+layer1: 1.53861ms
+layer2: 7.824985ms
+  l2_clear: 2.334865ms
+  l2_group_reduce: 450.766µs
+  l2_expand: 918.996µs
+  l2_emit: 236.715µs
+layer3: 943.322µs (out=1282)
+total: 11.853631ms
+
+image: 000000257341 (640x480)
+layer0: 1.152384ms
+layer1: 2.388235ms
+layer2: 6.687339ms
+  l2_clear: 3.627994ms
+  l2_group_reduce: 270.629µs
+  l2_expand: 1.930946ms
+  l2_emit: 461.156µs
+layer3: 1.386825ms (out=3514)
+total: 12.324746ms
+

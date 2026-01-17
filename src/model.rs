@@ -4,11 +4,12 @@ use wgpu;
 use wgpu::util::DeviceExt;
 
 use crate::config;
-use crate::layer3_cpu;
 use crate::l2_v3_gpu;
+use crate::layer3_tile32;
 use crate::preprocessing;
 use crate::rle_ccl_gpu;
 use crate::visualization;
+use crate::visualization_l3_tile32;
 
 pub struct Layer0Outputs {
     pub packed: wgpu::Buffer,
@@ -203,6 +204,8 @@ pub fn model(
     l1_buffers: &mut Option<rle_ccl_gpu::L1RleBuffers>,
     l2_pipelines: &l2_v3_gpu::L2v3Pipelines,
     l2_buffers: &mut Option<l2_v3_gpu::L2v3Buffers>,
+    l3_pipelines: &layer3_tile32::L3Tile32Pipelines,
+    l3_buffers: &mut Option<layer3_tile32::L3Tile32Buffers>,
     src_path: &Path,
 ) {
     let total_start = Instant::now();
@@ -495,25 +498,63 @@ pub fn model(
         );
     }
 
-    let l3_cfg = layer3_cpu::L3Config::from_app_config(cfg);
-    let l3_boxes = layer3_cpu::l3_merge_and_refine_cpu(&l2_boxes, &l3_cfg);
-    if cfg.save_l3_boxes {
-        let _ = visualization::save_l3_boxes_on_src(
-            src_path,
-            &l3_boxes,
-            width as usize,
-            height as usize,
-            "l3",
-        );
+    let mut l3_info: Option<(Duration, u32)> = None;
+    if cfg.save_l3_boxes || cfg.log_timing {
+        if let Some(l2_bufs) = l2_buffers.as_ref() {
+            let box_count = l2_boxes.len() as u32;
+            if box_count != 0 {
+                let bins_x = (width + layer3_tile32::BIN_SIZE - 1) / layer3_tile32::BIN_SIZE;
+                let bins_y = (height + layer3_tile32::BIN_SIZE - 1) / layer3_tile32::BIN_SIZE;
+                let k = cfg.l3_k.max(1);
+                let needs_rebuild = l3_buffers
+                    .as_ref()
+                    .map(|b| b.box_capacity < l2_bufs.total_boxes || b.bins_x != bins_x || b.bins_y != bins_y || b.k != k)
+                    .unwrap_or(true);
+                if needs_rebuild {
+                    *l3_buffers = Some(layer3_tile32::ensure_l3_tile32_buffers(
+                        device,
+                        l2_bufs.total_boxes,
+                        bins_x,
+                        bins_y,
+                        k,
+                    ));
+                }
+                if let Some(l3_bufs) = l3_buffers.as_ref() {
+                    let l3_start = Instant::now();
+                    let out_boxes = layer3_tile32::run_l3_tile32(
+                        device,
+                        queue,
+                        l3_pipelines,
+                        l3_bufs,
+                        &l2_bufs.out_boxes,
+                        box_count,
+                        width,
+                        height,
+                        cfg,
+                    );
+                    l3_info = Some((l3_start.elapsed(), out_boxes.len() as u32));
+                    if cfg.save_l3_boxes {
+                        let _ = visualization_l3_tile32::save_l3_tile32_overlay(
+                            src_path,
+                            &out_boxes,
+                            width as usize,
+                            height as usize,
+                            "l3_tile32",
+                        );
+                    }
+                }
+            }
+        }
     }
 
     if config::get().log_timing {
-        visualization::log_timing_layers_l2_passes(
+        visualization::log_timing_layers_l2_l3_passes(
             src_path,
             info,
             l0_dur,
             l1_dur,
             l2_dur,
+            l3_info,
             total_start.elapsed(),
             &l2_pass_times,
         );
