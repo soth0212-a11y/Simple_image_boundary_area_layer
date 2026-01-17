@@ -570,3 +570,37 @@ pub fn log_timing_layers(
         let _ = w.flush();
     }
 }
+
+pub fn log_timing_layers_l2_passes(
+    src_path: &Path,
+    img_info: [u32; 4],
+    l0: std::time::Duration,
+    l1: std::time::Duration,
+    l2: std::time::Duration,
+    total: std::time::Duration,
+    l2_passes: &[(&'static str, std::time::Duration)],
+) {
+    static LOG_WRITER: OnceLock<Mutex<BufWriter<std::fs::File>>> = OnceLock::new();
+    let writer = LOG_WRITER.get_or_init(|| {
+        let ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let _ = fs::create_dir_all("logs");
+        let file = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(format!("logs/layer_timing_{}.log", ts))
+            .unwrap();
+        Mutex::new(BufWriter::new(file))
+    });
+    if let Ok(mut w) = writer.lock() {
+        let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
+        writeln!(w, "image: {} ({}x{})", stem, img_info[1], img_info[0]).ok();
+        writeln!(w, "layer0: {:?}", l0).ok();
+        writeln!(w, "layer1: {:?}", l1).ok();
+        writeln!(w, "layer2: {:?}", l2).ok();
+        for (name, dur) in l2_passes {
+            writeln!(w, "  {}: {:?}", name, dur).ok();
+        }
+        writeln!(w, "total: {:?}\n", total).ok();
+        let _ = w.flush();
+    }
+}

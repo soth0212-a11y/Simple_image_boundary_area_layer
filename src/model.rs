@@ -301,6 +301,7 @@ pub fn model(
     let l1_dur = l1_start.elapsed();
 
     let l2_start = Instant::now();
+    let mut l2_pass_times: Vec<(&'static str, Duration)> = Vec::new();
     if total_segments > 0 {
         let bin_size = cfg.l2_bin_size.max(1);
         let bins_x = ((width + bin_size - 1) / bin_size).max(1);
@@ -314,6 +315,7 @@ pub fn model(
         }
         let l2_bufs = l2_buffers.as_ref().unwrap();
 
+        let pass_start = Instant::now();
         let params_clear = [l2_bufs.bins_count, total_segments, 0u32, 0u32];
         queue.write_buffer(&l2_bufs.params_clear, 0, bytemuck::cast_slice(&params_clear));
         let bg_clear = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -339,7 +341,9 @@ pub fn model(
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
+        l2_pass_times.push(("l2_clear", pass_start.elapsed()));
 
+        let pass_start = Instant::now();
         let params_bin_count = [total_segments, bins_x, bins_y, bin_size];
         queue.write_buffer(&l2_bufs.params_bin_count, 0, bytemuck::cast_slice(&params_bin_count));
         let bg_bin_count = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -360,7 +364,9 @@ pub fn model(
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
+        l2_pass_times.push(("l2_bin_count", pass_start.elapsed()));
 
+        let pass_start = Instant::now();
         let params_scan = [l2_bufs.bins_count, 0u32, 0u32, 0u32];
         queue.write_buffer(&l2_bufs.params_scan, 0, bytemuck::cast_slice(&params_scan));
         let bg_scan = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -381,7 +387,9 @@ pub fn model(
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
+        l2_pass_times.push(("l2_scan", pass_start.elapsed()));
 
+        let pass_start = Instant::now();
         let params_bin_fill = [total_segments, bins_x, bins_y, bin_size];
         queue.write_buffer(&l2_bufs.params_bin_fill, 0, bytemuck::cast_slice(&params_bin_fill));
         let bg_bin_fill = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -404,7 +412,9 @@ pub fn model(
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
+        l2_pass_times.push(("l2_bin_fill", pass_start.elapsed()));
 
+        let pass_start = Instant::now();
         let params_label_init = [total_segments, 0u32, 0u32, 0u32];
         queue.write_buffer(&l2_bufs.params_label_init, 0, bytemuck::cast_slice(&params_label_init));
         let bg_label_init = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -424,6 +434,7 @@ pub fn model(
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
+        l2_pass_times.push(("l2_label_init", pass_start.elapsed()));
 
         let params_label_prop = [
             total_segments,
@@ -448,6 +459,7 @@ pub fn model(
                 wgpu::BindGroupEntry { binding: 5, resource: l2_bufs.params_label_prop.as_entire_binding() },
             ],
         });
+        let pass_start = Instant::now();
         for _ in 0..cfg.l2_prop_iters.max(1) {
             let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_label_prop_enc") });
             {
@@ -459,7 +471,9 @@ pub fn model(
             queue.submit([enc.finish()]);
             device.poll(wgpu::PollType::Wait);
         }
+        l2_pass_times.push(("l2_label_prop", pass_start.elapsed()));
 
+        let pass_start = Instant::now();
         let params_label_compress = [total_segments, 0u32, 0u32, 0u32];
         queue.write_buffer(&l2_bufs.params_label_compress, 0, bytemuck::cast_slice(&params_label_compress));
         let bg_label_compress = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -481,7 +495,9 @@ pub fn model(
             queue.submit([enc.finish()]);
             device.poll(wgpu::PollType::Wait);
         }
+        l2_pass_times.push(("l2_label_compress", pass_start.elapsed()));
 
+        let pass_start = Instant::now();
         let params_reduce = [total_segments, 0u32, 0u32, 0u32];
         queue.write_buffer(&l2_bufs.params_reduce, 0, bytemuck::cast_slice(&params_reduce));
         let bg_reduce = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -506,7 +522,9 @@ pub fn model(
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
+        l2_pass_times.push(("l2_reduce", pass_start.elapsed()));
 
+        let pass_start = Instant::now();
         let params_emit = [total_segments, 0u32, 0u32, 0u32];
         queue.write_buffer(&l2_bufs.params_emit, 0, bytemuck::cast_slice(&params_emit));
         let bg_emit = device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -533,6 +551,7 @@ pub fn model(
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
+        l2_pass_times.push(("l2_emit", pass_start.elapsed()));
     }
     let l2_dur = l2_start.elapsed();
 
@@ -577,13 +596,14 @@ pub fn model(
     }
 
     if config::get().log_timing {
-        visualization::log_timing_layers(
+        visualization::log_timing_layers_l2_passes(
             src_path,
             info,
             l0_dur,
             l1_dur,
             l2_dur,
             total_start.elapsed(),
+            &l2_pass_times,
         );
     }
 }
