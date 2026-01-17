@@ -11,18 +11,34 @@ pub struct AppConfig {
     pub save_layer0: bool,
     pub save_l1_segments: bool,
     pub save_l2_boxes: bool,
+    pub save_l3_boxes: bool,
     pub log_timing: bool,
     pub l0_edge_th_r: u32,
     pub l0_edge_th_g: u32,
     pub l0_edge_th_b: u32,
     pub l0_dir_min_channels: u32,
     pub l0_pixel_min_dirs: u32,
+    pub l1_color_tol: u32,
     pub l2_max_out: u32,
     pub l2_min_w: u32,
     pub l2_min_h: u32,
     pub l2_color_tol: u32,
     pub l2_gap_x: u32,
     pub l2_gap_y: u32,
+    pub l2_bin_size: u32,
+    pub l2_prop_iters: u32,
+    pub l2_overlap_min: u32,
+    pub l3_min_w: u32,
+    pub l3_min_h: u32,
+    pub l3_min_area: u64,
+    pub l3_color_tol: u32,
+    pub l3_iou_th: f32,
+    pub l3_gap_x_th: u32,
+    pub l3_gap_y_th: u32,
+    pub l3_overlap_x_th: u32,
+    pub l3_overlap_y_th: u32,
+    pub l3_contain_ratio_th: f32,
+    pub l3_nms_iou_th: f32,
 }
 
 impl Default for AppConfig {
@@ -34,18 +50,34 @@ impl Default for AppConfig {
             save_layer0: false,
             save_l1_segments: false,
             save_l2_boxes: false,
+            save_l3_boxes: false,
             log_timing: false,
             l0_edge_th_r: 15,
             l0_edge_th_g: 15,
             l0_edge_th_b: 20,
             l0_dir_min_channels: 3,
             l0_pixel_min_dirs: 1,
+            l1_color_tol: 10,
             l2_max_out: 1_000_000,
             l2_min_w: 2,
             l2_min_h: 2,
             l2_color_tol: 20,
             l2_gap_x: 1,
             l2_gap_y: 1,
+            l2_bin_size: 64,
+            l2_prop_iters: 16,
+            l2_overlap_min: 1,
+            l3_min_w: 2,
+            l3_min_h: 2,
+            l3_min_area: 16,
+            l3_color_tol: 1,
+            l3_iou_th: 0.5,
+            l3_gap_x_th: 2,
+            l3_gap_y_th: 2,
+            l3_overlap_x_th: 1,
+            l3_overlap_y_th: 1,
+            l3_contain_ratio_th: 0.90,
+            l3_nms_iou_th: 0.85,
         }
     }
 }
@@ -95,6 +127,7 @@ fn parse_config(text: &str) -> AppConfig {
         let in_layer0 = section.eq_ignore_ascii_case("Layer0");
         let in_layer1 = section.eq_ignore_ascii_case("Layer1");
         let in_layer2 = section.eq_ignore_ascii_case("Layer2");
+        let in_layer3 = section.eq_ignore_ascii_case("Layer3");
         match key {
             "MAX_IMAGES" => {
                 if let Ok(v) = value.parse::<usize>() {
@@ -114,18 +147,34 @@ fn parse_config(text: &str) -> AppConfig {
             "SAVE_LAYER0" => cfg.save_layer0 = parse_bool(value),
             "SAVE_L1_SEGMENTS" => cfg.save_l1_segments = parse_bool(value),
             "SAVE_L2_BOXES" => cfg.save_l2_boxes = parse_bool(value),
+            "SAVE_L3_BOXES" => cfg.save_l3_boxes = parse_bool(value),
             "LOG_TIMING" => cfg.log_timing = parse_bool(value),
             "L0_EDGE_TH_R" => cfg.l0_edge_th_r = value.parse().unwrap_or(cfg.l0_edge_th_r),
             "L0_EDGE_TH_G" => cfg.l0_edge_th_g = value.parse().unwrap_or(cfg.l0_edge_th_g),
             "L0_EDGE_TH_B" => cfg.l0_edge_th_b = value.parse().unwrap_or(cfg.l0_edge_th_b),
             "L0_DIR_MIN_CHANNELS" => cfg.l0_dir_min_channels = value.parse().unwrap_or(cfg.l0_dir_min_channels),
             "L0_PIXEL_MIN_DIRS" => cfg.l0_pixel_min_dirs = value.parse().unwrap_or(cfg.l0_pixel_min_dirs),
+            "L1_COLOR_TOL" => cfg.l1_color_tol = value.parse().unwrap_or(cfg.l1_color_tol),
             "L2_MAX_OUT" => cfg.l2_max_out = value.parse().unwrap_or(cfg.l2_max_out),
             "L2_MIN_W" => cfg.l2_min_w = value.parse().unwrap_or(cfg.l2_min_w),
             "L2_MIN_H" => cfg.l2_min_h = value.parse().unwrap_or(cfg.l2_min_h),
             "L2_COLOR_TOL" => cfg.l2_color_tol = value.parse().unwrap_or(cfg.l2_color_tol),
             "L2_GAP_X" => cfg.l2_gap_x = value.parse().unwrap_or(cfg.l2_gap_x),
             "L2_GAP_Y" => cfg.l2_gap_y = value.parse().unwrap_or(cfg.l2_gap_y),
+            "L2_BIN_SIZE" => cfg.l2_bin_size = value.parse().unwrap_or(cfg.l2_bin_size),
+            "L2_PROP_ITERS" => cfg.l2_prop_iters = value.parse().unwrap_or(cfg.l2_prop_iters),
+            "L2_OVERLAP_MIN" => cfg.l2_overlap_min = value.parse().unwrap_or(cfg.l2_overlap_min),
+            "L3_MIN_W" => cfg.l3_min_w = value.parse().unwrap_or(cfg.l3_min_w),
+            "L3_MIN_H" => cfg.l3_min_h = value.parse().unwrap_or(cfg.l3_min_h),
+            "L3_MIN_AREA" => cfg.l3_min_area = value.parse().unwrap_or(cfg.l3_min_area),
+            "L3_COLOR_TOL" => cfg.l3_color_tol = value.parse().unwrap_or(cfg.l3_color_tol),
+            "L3_IOU_TH" => cfg.l3_iou_th = value.parse().unwrap_or(cfg.l3_iou_th),
+            "L3_GAP_X_TH" => cfg.l3_gap_x_th = value.parse().unwrap_or(cfg.l3_gap_x_th),
+            "L3_GAP_Y_TH" => cfg.l3_gap_y_th = value.parse().unwrap_or(cfg.l3_gap_y_th),
+            "L3_OVERLAP_X_TH" => cfg.l3_overlap_x_th = value.parse().unwrap_or(cfg.l3_overlap_x_th),
+            "L3_OVERLAP_Y_TH" => cfg.l3_overlap_y_th = value.parse().unwrap_or(cfg.l3_overlap_y_th),
+            "L3_CONTAIN_RATIO_TH" => cfg.l3_contain_ratio_th = value.parse().unwrap_or(cfg.l3_contain_ratio_th),
+            "L3_NMS_IOU_TH" => cfg.l3_nms_iou_th = value.parse().unwrap_or(cfg.l3_nms_iou_th),
             _ => {
                 if in_layer0 {
                     match key_lower.as_str() {
@@ -137,6 +186,12 @@ fn parse_config(text: &str) -> AppConfig {
                         _ => {}
                     }
                 }
+                if in_layer1 {
+                    match key_lower.as_str() {
+                        "color_tol" => cfg.l1_color_tol = value.parse().unwrap_or(cfg.l1_color_tol),
+                        _ => {}
+                    }
+                }
                 if in_layer2 {
                     match key_lower.as_str() {
                         "max_out" => cfg.l2_max_out = value.parse().unwrap_or(cfg.l2_max_out),
@@ -145,6 +200,25 @@ fn parse_config(text: &str) -> AppConfig {
                         "color_tol" => cfg.l2_color_tol = value.parse().unwrap_or(cfg.l2_color_tol),
                         "gap_x" => cfg.l2_gap_x = value.parse().unwrap_or(cfg.l2_gap_x),
                         "gap_y" => cfg.l2_gap_y = value.parse().unwrap_or(cfg.l2_gap_y),
+                        "bin_size" => cfg.l2_bin_size = value.parse().unwrap_or(cfg.l2_bin_size),
+                        "prop_iters" => cfg.l2_prop_iters = value.parse().unwrap_or(cfg.l2_prop_iters),
+                        "overlap_min" => cfg.l2_overlap_min = value.parse().unwrap_or(cfg.l2_overlap_min),
+                        _ => {}
+                    }
+                }
+                if in_layer3 {
+                    match key_lower.as_str() {
+                        "min_w" => cfg.l3_min_w = value.parse().unwrap_or(cfg.l3_min_w),
+                        "min_h" => cfg.l3_min_h = value.parse().unwrap_or(cfg.l3_min_h),
+                        "min_area" => cfg.l3_min_area = value.parse().unwrap_or(cfg.l3_min_area),
+                        "color_tol" => cfg.l3_color_tol = value.parse().unwrap_or(cfg.l3_color_tol),
+                        "iou_th" => cfg.l3_iou_th = value.parse().unwrap_or(cfg.l3_iou_th),
+                        "gap_x_th" => cfg.l3_gap_x_th = value.parse().unwrap_or(cfg.l3_gap_x_th),
+                        "gap_y_th" => cfg.l3_gap_y_th = value.parse().unwrap_or(cfg.l3_gap_y_th),
+                        "overlap_x_th" => cfg.l3_overlap_x_th = value.parse().unwrap_or(cfg.l3_overlap_x_th),
+                        "overlap_y_th" => cfg.l3_overlap_y_th = value.parse().unwrap_or(cfg.l3_overlap_y_th),
+                        "contain_ratio_th" => cfg.l3_contain_ratio_th = value.parse().unwrap_or(cfg.l3_contain_ratio_th),
+                        "nms_iou_th" => cfg.l3_nms_iou_th = value.parse().unwrap_or(cfg.l3_nms_iou_th),
                         _ => {}
                     }
                 }
@@ -181,18 +255,34 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     apply_env_bool("SAVE_LAYER0", &mut cfg.save_layer0);
     apply_env_bool("SAVE_L1_SEGMENTS", &mut cfg.save_l1_segments);
     apply_env_bool("SAVE_L2_BOXES", &mut cfg.save_l2_boxes);
+    apply_env_bool("SAVE_L3_BOXES", &mut cfg.save_l3_boxes);
     apply_env_bool("LOG_TIMING", &mut cfg.log_timing);
     apply_env_u32("L0_EDGE_TH_R", &mut cfg.l0_edge_th_r);
     apply_env_u32("L0_EDGE_TH_G", &mut cfg.l0_edge_th_g);
     apply_env_u32("L0_EDGE_TH_B", &mut cfg.l0_edge_th_b);
     apply_env_u32("L0_DIR_MIN_CHANNELS", &mut cfg.l0_dir_min_channels);
     apply_env_u32("L0_PIXEL_MIN_DIRS", &mut cfg.l0_pixel_min_dirs);
+    apply_env_u32("L1_COLOR_TOL", &mut cfg.l1_color_tol);
     apply_env_u32("L2_MAX_OUT", &mut cfg.l2_max_out);
     apply_env_u32("L2_MIN_W", &mut cfg.l2_min_w);
     apply_env_u32("L2_MIN_H", &mut cfg.l2_min_h);
     apply_env_u32("L2_COLOR_TOL", &mut cfg.l2_color_tol);
     apply_env_u32("L2_GAP_X", &mut cfg.l2_gap_x);
     apply_env_u32("L2_GAP_Y", &mut cfg.l2_gap_y);
+    apply_env_u32("L2_BIN_SIZE", &mut cfg.l2_bin_size);
+    apply_env_u32("L2_PROP_ITERS", &mut cfg.l2_prop_iters);
+    apply_env_u32("L2_OVERLAP_MIN", &mut cfg.l2_overlap_min);
+    apply_env_u32("L3_MIN_W", &mut cfg.l3_min_w);
+    apply_env_u32("L3_MIN_H", &mut cfg.l3_min_h);
+    apply_env_u64("L3_MIN_AREA", &mut cfg.l3_min_area);
+    apply_env_u32("L3_COLOR_TOL", &mut cfg.l3_color_tol);
+    apply_env_f32("L3_IOU_TH", &mut cfg.l3_iou_th);
+    apply_env_u32("L3_GAP_X_TH", &mut cfg.l3_gap_x_th);
+    apply_env_u32("L3_GAP_Y_TH", &mut cfg.l3_gap_y_th);
+    apply_env_u32("L3_OVERLAP_X_TH", &mut cfg.l3_overlap_x_th);
+    apply_env_u32("L3_OVERLAP_Y_TH", &mut cfg.l3_overlap_y_th);
+    apply_env_f32("L3_CONTAIN_RATIO_TH", &mut cfg.l3_contain_ratio_th);
+    apply_env_f32("L3_NMS_IOU_TH", &mut cfg.l3_nms_iou_th);
 }
 
 fn apply_env_bool(name: &str, target: &mut bool) {
@@ -204,6 +294,22 @@ fn apply_env_bool(name: &str, target: &mut bool) {
 fn apply_env_u32(name: &str, target: &mut u32) {
     if let Ok(v) = env::var(name) {
         if let Ok(parsed) = v.parse::<u32>() {
+            *target = parsed;
+        }
+    }
+}
+
+fn apply_env_u64(name: &str, target: &mut u64) {
+    if let Ok(v) = env::var(name) {
+        if let Ok(parsed) = v.parse::<u64>() {
+            *target = parsed;
+        }
+    }
+}
+
+fn apply_env_f32(name: &str, target: &mut f32) {
+    if let Ok(v) = env::var(name) {
+        if let Ok(parsed) = v.parse::<f32>() {
             *target = parsed;
         }
     }

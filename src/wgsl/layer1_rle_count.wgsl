@@ -22,18 +22,14 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     if (w == 0u || h == 0u) { return; }
     if (y >= h) { return; }
     var count: u32 = 0u;
-    var prev_a: u32 = 0u;
-    var prev_c: u32 = 0u;
-    for (var x: u32 = 0u; x < w; x = x + 1u) {
-        let idx = idx2(x, y, w);
-        let a = select(0u, s_active[idx] & 1u, idx < arrayLength(&s_active));
-        let c = select(0u, color565[idx] & 0xFFFFu, idx < arrayLength(&color565));
-        let seg_start = (a != 0u) && (x == 0u || prev_a == 0u || prev_c != c);
-        if (seg_start) {
-            count = count + 1u;
+    if ((y & 1u) == 0u) {
+        for (var x: u32 = 0u; x < w; x = x + 2u) {
+            let idx = idx2(x, y, w);
+            let a = select(0u, s_active[idx] & 1u, idx < arrayLength(&s_active));
+            if (a != 0u) {
+                count = count + 1u;
+            }
         }
-        prev_a = a;
-        prev_c = c;
     }
     if (y < arrayLength(&row_counts)) {
         row_counts[y] = count;

@@ -4,6 +4,8 @@ use wgpu;
 use wgpu::util::DeviceExt;
 
 use crate::config;
+use crate::layer3_cpu;
+use crate::l2_v2_gpu;
 use crate::preprocessing;
 use crate::rle_ccl_gpu;
 use crate::visualization;
@@ -50,7 +52,7 @@ fn readback_segments(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::Buf
     let bytes = (count as u64) * 16;
     let raw = readback_u32_buffer(device, queue, src, bytes);
     raw.chunks_exact(4)
-        .map(|c| rle_ccl_gpu::Segment { x0: c[0], x1: c[1], y_color: c[2], pad: c[3] })
+        .map(|c| rle_ccl_gpu::Segment { tl: c[0], br: c[1], color565: c[2], pad: c[3] })
         .collect()
 }
 
@@ -63,6 +65,28 @@ fn readback_out_boxes(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::Bu
     raw.chunks_exact(4)
         .map(|c| rle_ccl_gpu::OutBox { x0y0: c[0], x1y1: c[1], color565: c[2], flags: c[3] })
         .collect()
+}
+
+fn readback_color565_map(device: &wgpu::Device, queue: &wgpu::Queue, src: &wgpu::Buffer, count: u32) -> Vec<u32> {
+    if count == 0 {
+        return Vec::new();
+    }
+    readback_u32_buffer(device, queue, src, (count as u64) * 4)
+}
+
+fn read_l2_boxes(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    out_count_buf: &wgpu::Buffer,
+    out_boxes_buf: &wgpu::Buffer,
+    max_count: u32,
+) -> Vec<rle_ccl_gpu::OutBox> {
+    let count = readback_u32_buffer(device, queue, out_count_buf, 4)
+        .get(0)
+        .copied()
+        .unwrap_or(0)
+        .min(max_count);
+    readback_out_boxes(device, queue, out_boxes_buf, count)
 }
 
 fn prefix_sum(counts: &[u32]) -> Vec<u32> {
@@ -175,8 +199,10 @@ pub fn model(
     img_view: wgpu::TextureView,
     img_info: preprocessing::Imginfo,
     l0_static: &layer_static_values,
-    pipelines: &rle_ccl_gpu::RleCclPipelines,
-    buffers: &mut Option<rle_ccl_gpu::RleCclBuffers>,
+    l1_pipelines: &rle_ccl_gpu::L1RlePipelines,
+    l1_buffers: &mut Option<rle_ccl_gpu::L1RleBuffers>,
+    l2_pipelines: &l2_v2_gpu::L2v2Pipelines,
+    l2_buffers: &mut Option<l2_v2_gpu::L2v2Buffers>,
     src_path: &Path,
 ) {
     let total_start = Instant::now();
@@ -201,23 +227,22 @@ pub fn model(
     }
 
     let cfg = config::get();
-    let max_out = cfg.l2_max_out.max(1);
     let mut offsets: Vec<u32> = Vec::new();
     let l1_start = Instant::now();
     let total_segments = {
-        let rebuild = buffers
+        let rebuild = l1_buffers
             .as_ref()
-            .map(|b| b.w != width || b.h != height || b.max_out != max_out)
+            .map(|b| b.w != width || b.h != height)
             .unwrap_or(true);
         if rebuild {
-            *buffers = Some(rle_ccl_gpu::ensure_rle_ccl_buffers(device, width, height, 1, max_out));
+            *l1_buffers = Some(rle_ccl_gpu::ensure_l1_rle_buffers(device, width, height, 1));
         }
-        let bufs = buffers.as_ref().unwrap();
+        let bufs = l1_buffers.as_ref().unwrap();
         let params_count = [width, height, 0u32, 0u32];
         queue.write_buffer(&bufs.params_count, 0, bytemuck::cast_slice(&params_count));
         let bg_count = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("l1_rle_count_bg"),
-            layout: &pipelines.count_layout,
+            layout: &l1_pipelines.count_layout,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: l0_out.s_active.as_entire_binding() },
                 wgpu::BindGroupEntry { binding: 1, resource: l0_out.color565.as_entire_binding() },
@@ -228,7 +253,7 @@ pub fn model(
         let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l1_rle_count_enc") });
         {
             let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l1_rle_count_pass"), timestamp_writes: None });
-            pass.set_pipeline(&pipelines.count_pipeline);
+            pass.set_pipeline(&l1_pipelines.count_pipeline);
             pass.set_bind_group(0, &bg_count, &[]);
             pass.dispatch_workgroups(height, 1, 1);
         }
@@ -239,23 +264,23 @@ pub fn model(
         *offsets.last().unwrap_or(&0)
     };
 
-    let rebuild = buffers
+    let rebuild = l1_buffers
         .as_ref()
-        .map(|b| b.w != width || b.h != height || b.total_segments != total_segments || b.max_out != max_out)
+        .map(|b| b.w != width || b.h != height || b.total_segments != total_segments)
         .unwrap_or(true);
     if rebuild {
-        *buffers = Some(rle_ccl_gpu::ensure_rle_ccl_buffers(device, width, height, total_segments, max_out));
+        *l1_buffers = Some(rle_ccl_gpu::ensure_l1_rle_buffers(device, width, height, total_segments));
     }
-    let bufs = buffers.as_ref().unwrap();
+    let bufs = l1_buffers.as_ref().unwrap();
     if !offsets.is_empty() {
         queue.write_buffer(&bufs.row_offsets, 0, bytemuck::cast_slice(&offsets));
     }
 
-    let params_emit = [width, height, 0u32, 0u32];
+    let params_emit = [width, height, cfg.l1_color_tol, 0u32];
     queue.write_buffer(&bufs.params_emit, 0, bytemuck::cast_slice(&params_emit));
     let bg_emit = device.create_bind_group(&wgpu::BindGroupDescriptor {
         label: Some("l1_rle_emit_bg"),
-        layout: &pipelines.emit_layout,
+        layout: &l1_pipelines.emit_layout,
         entries: &[
             wgpu::BindGroupEntry { binding: 0, resource: l0_out.s_active.as_entire_binding() },
             wgpu::BindGroupEntry { binding: 1, resource: l0_out.color565.as_entire_binding() },
@@ -267,7 +292,7 @@ pub fn model(
     let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l1_rle_emit_enc") });
     {
         let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l1_rle_emit_pass"), timestamp_writes: None });
-        pass.set_pipeline(&pipelines.emit_pipeline);
+        pass.set_pipeline(&l1_pipelines.emit_pipeline);
         pass.set_bind_group(0, &bg_emit, &[]);
         pass.dispatch_workgroups(height, 1, 1);
     }
@@ -277,100 +302,233 @@ pub fn model(
 
     let l2_start = Instant::now();
     if total_segments > 0 {
-        let params_init = [total_segments, 0u32, 0u32, 0u32];
-        queue.write_buffer(&bufs.params_init, 0, bytemuck::cast_slice(&params_init));
-        let bg_init = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("l2_ccl_init_bg"),
-            layout: &pipelines.init_layout,
+        let bin_size = cfg.l2_bin_size.max(1);
+        let bins_x = ((width + bin_size - 1) / bin_size).max(1);
+        let bins_y = ((height + bin_size - 1) / bin_size).max(1);
+        let rebuild = l2_buffers
+            .as_ref()
+            .map(|b| b.total_boxes != total_segments || b.bins_x != bins_x || b.bins_y != bins_y)
+            .unwrap_or(true);
+        if rebuild {
+            *l2_buffers = Some(l2_v2_gpu::ensure_l2_v2_buffers(device, total_segments, bins_x, bins_y));
+        }
+        let l2_bufs = l2_buffers.as_ref().unwrap();
+
+        let params_clear = [l2_bufs.bins_count, total_segments, 0u32, 0u32];
+        queue.write_buffer(&l2_bufs.params_clear, 0, bytemuck::cast_slice(&params_clear));
+        let bg_clear = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("l2_v2_clear_bg"),
+            layout: &l2_pipelines.clear_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: bufs.parent.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: bufs.bbox_minx.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: bufs.bbox_miny.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: bufs.bbox_maxx.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 4, resource: bufs.bbox_maxy.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 5, resource: bufs.out_count.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 6, resource: bufs.params_init.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 0, resource: l2_bufs.bin_count.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: l2_bufs.bin_cursor.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: l2_bufs.comp_minx.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: l2_bufs.comp_miny.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: l2_bufs.comp_maxx.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: l2_bufs.comp_maxy.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 6, resource: l2_bufs.out_count.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 7, resource: l2_bufs.params_clear.as_entire_binding() },
             ],
         });
-        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_ccl_init_enc") });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_clear_enc") });
         {
-            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_ccl_init_pass"), timestamp_writes: None });
-            pass.set_pipeline(&pipelines.init_pipeline);
-            pass.set_bind_group(0, &bg_init, &[]);
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_v2_clear_pass"), timestamp_writes: None });
+            pass.set_pipeline(&l2_pipelines.clear_pipeline);
+            pass.set_bind_group(0, &bg_clear, &[]);
+            pass.dispatch_workgroups(((l2_bufs.bins_count.max(total_segments)) + 255) / 256, 1, 1);
+        }
+        queue.submit([enc.finish()]);
+        device.poll(wgpu::PollType::Wait);
+
+        let params_bin_count = [total_segments, bins_x, bins_y, bin_size];
+        queue.write_buffer(&l2_bufs.params_bin_count, 0, bytemuck::cast_slice(&params_bin_count));
+        let bg_bin_count = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("l2_v2_bin_count_bg"),
+            layout: &l2_pipelines.bin_count_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: bufs.segments.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: l2_bufs.bin_count.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: l2_bufs.params_bin_count.as_entire_binding() },
+            ],
+        });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_bin_count_enc") });
+        {
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_v2_bin_count_pass"), timestamp_writes: None });
+            pass.set_pipeline(&l2_pipelines.bin_count_pipeline);
+            pass.set_bind_group(0, &bg_bin_count, &[]);
             pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
 
-        let params_union = [width, height, cfg.l2_color_tol, cfg.l2_gap_x, cfg.l2_gap_y, 0u32, 0u32, 0u32];
-        queue.write_buffer(&bufs.params_union, 0, bytemuck::cast_slice(&params_union));
-        let bg_union = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("l2_ccl_union_bg"),
-            layout: &pipelines.union_layout,
+        let params_scan = [l2_bufs.bins_count, 0u32, 0u32, 0u32];
+        queue.write_buffer(&l2_bufs.params_scan, 0, bytemuck::cast_slice(&params_scan));
+        let bg_scan = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("l2_v2_scan_bg"),
+            layout: &l2_pipelines.scan_layout,
             entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: bufs.row_offsets.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: bufs.segments.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: bufs.parent.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: bufs.params_union.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 0, resource: l2_bufs.bin_count.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: l2_bufs.bin_offset.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: l2_bufs.params_scan.as_entire_binding() },
             ],
         });
-        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_ccl_union_enc") });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_scan_enc") });
         {
-            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_ccl_union_pass"), timestamp_writes: None });
-            pass.set_pipeline(&pipelines.union_pipeline);
-            pass.set_bind_group(0, &bg_union, &[]);
-            pass.dispatch_workgroups(height, 1, 1);
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_v2_scan_pass"), timestamp_writes: None });
+            pass.set_pipeline(&l2_pipelines.scan_pipeline);
+            pass.set_bind_group(0, &bg_scan, &[]);
+            pass.dispatch_workgroups(1, 1, 1);
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
 
-        let params_reduce = [total_segments, 0u32, 0u32, 0u32];
-        queue.write_buffer(&bufs.params_reduce, 0, bytemuck::cast_slice(&params_reduce));
-        let bg_reduce = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("l2_ccl_reduce_bg"),
-            layout: &pipelines.reduce_layout,
+        let params_bin_fill = [total_segments, bins_x, bins_y, bin_size];
+        queue.write_buffer(&l2_bufs.params_bin_fill, 0, bytemuck::cast_slice(&params_bin_fill));
+        let bg_bin_fill = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("l2_v2_bin_fill_bg"),
+            layout: &l2_pipelines.bin_fill_layout,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: bufs.segments.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: bufs.parent.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: bufs.bbox_minx.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: bufs.bbox_miny.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 4, resource: bufs.bbox_maxx.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 5, resource: bufs.bbox_maxy.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 6, resource: bufs.params_reduce.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: l2_bufs.bin_offset.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: l2_bufs.bin_cursor.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: l2_bufs.bin_items.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: l2_bufs.params_bin_fill.as_entire_binding() },
             ],
         });
-        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_ccl_reduce_enc") });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_bin_fill_enc") });
         {
-            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_ccl_reduce_pass"), timestamp_writes: None });
-            pass.set_pipeline(&pipelines.reduce_pipeline);
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_v2_bin_fill_pass"), timestamp_writes: None });
+            pass.set_pipeline(&l2_pipelines.bin_fill_pipeline);
+            pass.set_bind_group(0, &bg_bin_fill, &[]);
+            pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
+        }
+        queue.submit([enc.finish()]);
+        device.poll(wgpu::PollType::Wait);
+
+        let params_label_init = [total_segments, 0u32, 0u32, 0u32];
+        queue.write_buffer(&l2_bufs.params_label_init, 0, bytemuck::cast_slice(&params_label_init));
+        let bg_label_init = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("l2_v2_label_init_bg"),
+            layout: &l2_pipelines.label_init_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: l2_bufs.labels.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: l2_bufs.params_label_init.as_entire_binding() },
+            ],
+        });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_label_init_enc") });
+        {
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_v2_label_init_pass"), timestamp_writes: None });
+            pass.set_pipeline(&l2_pipelines.label_init_pipeline);
+            pass.set_bind_group(0, &bg_label_init, &[]);
+            pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
+        }
+        queue.submit([enc.finish()]);
+        device.poll(wgpu::PollType::Wait);
+
+        let params_label_prop = [
+            total_segments,
+            bins_x,
+            bins_y,
+            bin_size,
+            cfg.l2_color_tol,
+            cfg.l2_gap_x,
+            cfg.l2_gap_y,
+            cfg.l2_overlap_min,
+        ];
+        queue.write_buffer(&l2_bufs.params_label_prop, 0, bytemuck::cast_slice(&params_label_prop));
+        let bg_label_prop = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("l2_v2_label_prop_bg"),
+            layout: &l2_pipelines.label_prop_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: bufs.segments.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: l2_bufs.bin_offset.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: l2_bufs.bin_count.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: l2_bufs.bin_items.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: l2_bufs.labels.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: l2_bufs.params_label_prop.as_entire_binding() },
+            ],
+        });
+        for _ in 0..cfg.l2_prop_iters.max(1) {
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_label_prop_enc") });
+            {
+                let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_v2_label_prop_pass"), timestamp_writes: None });
+                pass.set_pipeline(&l2_pipelines.label_prop_pipeline);
+                pass.set_bind_group(0, &bg_label_prop, &[]);
+                pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
+            }
+            queue.submit([enc.finish()]);
+            device.poll(wgpu::PollType::Wait);
+        }
+
+        let params_label_compress = [total_segments, 0u32, 0u32, 0u32];
+        queue.write_buffer(&l2_bufs.params_label_compress, 0, bytemuck::cast_slice(&params_label_compress));
+        let bg_label_compress = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("l2_v2_label_compress_bg"),
+            layout: &l2_pipelines.label_compress_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: l2_bufs.labels.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: l2_bufs.params_label_compress.as_entire_binding() },
+            ],
+        });
+        for _ in 0..2 {
+            let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_label_compress_enc") });
+            {
+                let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_v2_label_compress_pass"), timestamp_writes: None });
+                pass.set_pipeline(&l2_pipelines.label_compress_pipeline);
+                pass.set_bind_group(0, &bg_label_compress, &[]);
+                pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
+            }
+            queue.submit([enc.finish()]);
+            device.poll(wgpu::PollType::Wait);
+        }
+
+        let params_reduce = [total_segments, 0u32, 0u32, 0u32];
+        queue.write_buffer(&l2_bufs.params_reduce, 0, bytemuck::cast_slice(&params_reduce));
+        let bg_reduce = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("l2_v2_reduce_bg"),
+            layout: &l2_pipelines.reduce_layout,
+            entries: &[
+                wgpu::BindGroupEntry { binding: 0, resource: bufs.segments.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: l2_bufs.labels.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: l2_bufs.comp_minx.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: l2_bufs.comp_miny.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: l2_bufs.comp_maxx.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: l2_bufs.comp_maxy.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 6, resource: l2_bufs.params_reduce.as_entire_binding() },
+            ],
+        });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_reduce_enc") });
+        {
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_v2_reduce_pass"), timestamp_writes: None });
+            pass.set_pipeline(&l2_pipelines.reduce_pipeline);
             pass.set_bind_group(0, &bg_reduce, &[]);
             pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
         }
         queue.submit([enc.finish()]);
         device.poll(wgpu::PollType::Wait);
 
-        let params_emit_boxes = [total_segments, max_out, cfg.l2_min_w, cfg.l2_min_h];
-        queue.write_buffer(&bufs.params_emit_boxes, 0, bytemuck::cast_slice(&params_emit_boxes));
-        let bg_emit_boxes = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("l2_ccl_emit_boxes_bg"),
-            layout: &pipelines.emit_boxes_layout,
+        let params_emit = [total_segments, 0u32, 0u32, 0u32];
+        queue.write_buffer(&l2_bufs.params_emit, 0, bytemuck::cast_slice(&params_emit));
+        let bg_emit = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("l2_v2_emit_bg"),
+            layout: &l2_pipelines.emit_layout,
             entries: &[
                 wgpu::BindGroupEntry { binding: 0, resource: bufs.segments.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: bufs.parent.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 2, resource: bufs.bbox_minx.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 3, resource: bufs.bbox_miny.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 4, resource: bufs.bbox_maxx.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 5, resource: bufs.bbox_maxy.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 6, resource: bufs.out_count.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 7, resource: bufs.out_boxes.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 8, resource: bufs.params_emit_boxes.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 1, resource: l2_bufs.labels.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 2, resource: l2_bufs.comp_minx.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 3, resource: l2_bufs.comp_miny.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 4, resource: l2_bufs.comp_maxx.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 5, resource: l2_bufs.comp_maxy.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 6, resource: l2_bufs.out_count.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 7, resource: l2_bufs.out_boxes.as_entire_binding() },
+                wgpu::BindGroupEntry { binding: 8, resource: l2_bufs.params_emit.as_entire_binding() },
             ],
         });
-        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_ccl_emit_boxes_enc") });
+        let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("l2_v2_emit_enc") });
         {
-            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_ccl_emit_boxes_pass"), timestamp_writes: None });
-            pass.set_pipeline(&pipelines.emit_boxes_pipeline);
-            pass.set_bind_group(0, &bg_emit_boxes, &[]);
+            let mut pass = enc.begin_compute_pass(&wgpu::ComputePassDescriptor { label: Some("l2_v2_emit_pass"), timestamp_writes: None });
+            pass.set_pipeline(&l2_pipelines.emit_pipeline);
+            pass.set_bind_group(0, &bg_emit, &[]);
             pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
         }
         queue.submit([enc.finish()]);
@@ -380,24 +538,41 @@ pub fn model(
 
     if cfg.save_l1_segments {
         let segments = readback_segments(device, queue, &bufs.segments, total_segments);
+        let color565_map = readback_color565_map(device, queue, &l0_out.color565, width * height);
         let _ = visualization::save_l1_segments_overlay(
             src_path,
             &segments,
+            &color565_map,
             width as usize,
             height as usize,
             "l1",
         );
     }
 
+    let l2_boxes = if let Some(l2_bufs) = l2_buffers.as_ref() {
+        read_l2_boxes(device, queue, &l2_bufs.out_count, &l2_bufs.out_boxes, total_segments)
+    } else {
+        Vec::new()
+    };
     if cfg.save_l2_boxes {
-        let count = readback_u32_buffer(device, queue, &bufs.out_count, 4).get(0).copied().unwrap_or(0);
-        let boxes = readback_out_boxes(device, queue, &bufs.out_boxes, count);
         let _ = visualization::save_l2_boxes_on_src(
             src_path,
-            &boxes,
+            &l2_boxes,
             width as usize,
             height as usize,
             "l2",
+        );
+    }
+
+    let l3_cfg = layer3_cpu::L3Config::from_app_config(cfg);
+    let l3_boxes = layer3_cpu::l3_merge_and_refine_cpu(&l2_boxes, &l3_cfg);
+    if cfg.save_l3_boxes {
+        let _ = visualization::save_l3_boxes_on_src(
+            src_path,
+            &l3_boxes,
+            width as usize,
+            height as usize,
+            "l3",
         );
     }
 
