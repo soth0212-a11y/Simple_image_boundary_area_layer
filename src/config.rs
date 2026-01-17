@@ -28,6 +28,9 @@ pub struct AppConfig {
     pub l2_bin_size: u32,
     pub l2_prop_iters: u32,
     pub l2_overlap_min: u32,
+    pub l2_band_r_shift: u32,
+    pub l2_band_g_shift: u32,
+    pub l2_band_b_shift: u32,
     pub l3_min_w: u32,
     pub l3_min_h: u32,
     pub l3_min_area: u64,
@@ -67,6 +70,9 @@ impl Default for AppConfig {
             l2_bin_size: 64,
             l2_prop_iters: 16,
             l2_overlap_min: 1,
+            l2_band_r_shift: 2,
+            l2_band_g_shift: 3,
+            l2_band_b_shift: 2,
             l3_min_w: 2,
             l3_min_h: 2,
             l3_min_area: 16,
@@ -164,6 +170,9 @@ fn parse_config(text: &str) -> AppConfig {
             "L2_BIN_SIZE" => cfg.l2_bin_size = value.parse().unwrap_or(cfg.l2_bin_size),
             "L2_PROP_ITERS" => cfg.l2_prop_iters = value.parse().unwrap_or(cfg.l2_prop_iters),
             "L2_OVERLAP_MIN" => cfg.l2_overlap_min = value.parse().unwrap_or(cfg.l2_overlap_min),
+            "L2_BAND_R_SHIFT" => cfg.l2_band_r_shift = value.parse().unwrap_or(cfg.l2_band_r_shift),
+            "L2_BAND_G_SHIFT" => cfg.l2_band_g_shift = value.parse().unwrap_or(cfg.l2_band_g_shift),
+            "L2_BAND_B_SHIFT" => cfg.l2_band_b_shift = value.parse().unwrap_or(cfg.l2_band_b_shift),
             "L3_MIN_W" => cfg.l3_min_w = value.parse().unwrap_or(cfg.l3_min_w),
             "L3_MIN_H" => cfg.l3_min_h = value.parse().unwrap_or(cfg.l3_min_h),
             "L3_MIN_AREA" => cfg.l3_min_area = value.parse().unwrap_or(cfg.l3_min_area),
@@ -203,6 +212,9 @@ fn parse_config(text: &str) -> AppConfig {
                         "bin_size" => cfg.l2_bin_size = value.parse().unwrap_or(cfg.l2_bin_size),
                         "prop_iters" => cfg.l2_prop_iters = value.parse().unwrap_or(cfg.l2_prop_iters),
                         "overlap_min" => cfg.l2_overlap_min = value.parse().unwrap_or(cfg.l2_overlap_min),
+                        "band_r_shift" => cfg.l2_band_r_shift = value.parse().unwrap_or(cfg.l2_band_r_shift),
+                        "band_g_shift" => cfg.l2_band_g_shift = value.parse().unwrap_or(cfg.l2_band_g_shift),
+                        "band_b_shift" => cfg.l2_band_b_shift = value.parse().unwrap_or(cfg.l2_band_b_shift),
                         _ => {}
                     }
                 }
@@ -272,6 +284,9 @@ fn apply_env_overrides(cfg: &mut AppConfig) {
     apply_env_u32("L2_BIN_SIZE", &mut cfg.l2_bin_size);
     apply_env_u32("L2_PROP_ITERS", &mut cfg.l2_prop_iters);
     apply_env_u32("L2_OVERLAP_MIN", &mut cfg.l2_overlap_min);
+    apply_env_u32("L2_BAND_R_SHIFT", &mut cfg.l2_band_r_shift);
+    apply_env_u32("L2_BAND_G_SHIFT", &mut cfg.l2_band_g_shift);
+    apply_env_u32("L2_BAND_B_SHIFT", &mut cfg.l2_band_b_shift);
     apply_env_u32("L3_MIN_W", &mut cfg.l3_min_w);
     apply_env_u32("L3_MIN_H", &mut cfg.l3_min_h);
     apply_env_u64("L3_MIN_AREA", &mut cfg.l3_min_area);
