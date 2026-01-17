@@ -203,6 +203,7 @@ pub fn model(
     let cfg = config::get();
     let max_out = cfg.l2_max_out.max(1);
     let mut offsets: Vec<u32> = Vec::new();
+    let l1_start = Instant::now();
     let total_segments = {
         let rebuild = buffers
             .as_ref()
@@ -272,7 +273,9 @@ pub fn model(
     }
     queue.submit([enc.finish()]);
     device.poll(wgpu::PollType::Wait);
+    let l1_dur = l1_start.elapsed();
 
+    let l2_start = Instant::now();
     if total_segments > 0 {
         let params_init = [total_segments, 0u32, 0u32, 0u32];
         queue.write_buffer(&bufs.params_init, 0, bytemuck::cast_slice(&params_init));
@@ -297,6 +300,7 @@ pub fn model(
             pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
         }
         queue.submit([enc.finish()]);
+        device.poll(wgpu::PollType::Wait);
 
         let params_union = [width, height, cfg.l2_color_tol, cfg.l2_gap_x, cfg.l2_gap_y, 0u32, 0u32, 0u32];
         queue.write_buffer(&bufs.params_union, 0, bytemuck::cast_slice(&params_union));
@@ -318,6 +322,7 @@ pub fn model(
             pass.dispatch_workgroups(height, 1, 1);
         }
         queue.submit([enc.finish()]);
+        device.poll(wgpu::PollType::Wait);
 
         let params_reduce = [total_segments, 0u32, 0u32, 0u32];
         queue.write_buffer(&bufs.params_reduce, 0, bytemuck::cast_slice(&params_reduce));
@@ -342,6 +347,7 @@ pub fn model(
             pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
         }
         queue.submit([enc.finish()]);
+        device.poll(wgpu::PollType::Wait);
 
         let params_emit_boxes = [total_segments, max_out, cfg.l2_min_w, cfg.l2_min_h];
         queue.write_buffer(&bufs.params_emit_boxes, 0, bytemuck::cast_slice(&params_emit_boxes));
@@ -368,7 +374,9 @@ pub fn model(
             pass.dispatch_workgroups((total_segments + 255) / 256, 1, 1);
         }
         queue.submit([enc.finish()]);
+        device.poll(wgpu::PollType::Wait);
     }
+    let l2_dur = l2_start.elapsed();
 
     if cfg.save_l1_segments {
         let segments = readback_segments(device, queue, &bufs.segments, total_segments);
@@ -398,6 +406,8 @@ pub fn model(
             src_path,
             info,
             l0_dur,
+            l1_dur,
+            l2_dur,
             total_start.elapsed(),
         );
     }

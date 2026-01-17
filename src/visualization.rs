@@ -478,6 +478,8 @@ pub fn log_timing_layers(
     src_path: &Path,
     img_info: [u32; 4],
     l0: std::time::Duration,
+    l1: std::time::Duration,
+    l2: std::time::Duration,
     total: std::time::Duration,
 ) {
     static LOG_WRITER: OnceLock<Mutex<BufWriter<std::fs::File>>> = OnceLock::new();
@@ -495,6 +497,9 @@ pub fn log_timing_layers(
         let stem = src_path.file_stem().and_then(|s| s.to_str()).unwrap_or("image");
         writeln!(w, "image: {} ({}x{})", stem, img_info[1], img_info[0]).ok();
         writeln!(w, "layer0: {:?}", l0).ok();
+        writeln!(w, "layer1: {:?}", l1).ok();
+        writeln!(w, "layer2: {:?}", l2).ok();
         writeln!(w, "total: {:?}\n", total).ok();
+        let _ = w.flush();
     }
 }
